@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { MobileThumbNav } from './MobileThumbNav';
-import { SupabaseStatusBanner } from '../supabase/SupabaseStatusBanner';
 
 interface AppLayoutProps {
   currentPath: string;
@@ -23,9 +22,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
   return (
     <div className="min-h-screen bg-stone-50/60 dark:bg-stone-950 text-stone-800 dark:text-stone-100 flex flex-col transition-colors duration-200">
-      {/* Top Supabase Status Banner */}
-      <SupabaseStatusBanner />
-
       <div className="flex-1 flex">
         {/* Sidebar for Desktop & Standard Drawer */}
         <Sidebar
