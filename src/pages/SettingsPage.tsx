@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { storageService } from '../services/storage.service';
+import { biometricService, EnrolledBiometricUser } from '../services/biometric.service';
 import { isSupabaseConfigured, activeSupabaseUrl, setCustomSupabaseCredentials } from '../lib/supabase';
 import { SqlScriptModal } from '../components/supabase/SqlScriptModal';
 import { Badge } from '../components/ui/Badge';
@@ -20,6 +21,10 @@ import {
   ShieldAlert,
   Server,
   Layers,
+  Fingerprint,
+  Smartphone,
+  Trash2,
+  Lock,
 } from 'lucide-react';
 
 export const SettingsPage: React.FC = () => {
@@ -35,6 +40,108 @@ export const SettingsPage: React.FC = () => {
   // Supabase Config
   const [urlInput, setUrlInput] = useState(activeSupabaseUrl || '');
   const [keyInput, setKeyInput] = useState('');
+
+  // Biometric / Fingerprint State
+  const [isBiometricSupported, setIsBiometricSupported] = useState(false);
+  const [enrolledBioUser, setEnrolledBioUser] = useState<EnrolledBiometricUser | null>(null);
+  const [bioPasswordInput, setBioPasswordInput] = useState('');
+  const [isEnrollingBio, setIsEnrollingBio] = useState(false);
+  const [showBioPasswordModal, setShowBioPasswordModal] = useState(false);
+  const [isTestingBio, setIsTestingBio] = useState(false);
+
+  useEffect(() => {
+    const checkBio = async () => {
+      const supported = await biometricService.isBiometricAvailable();
+      setIsBiometricSupported(supported);
+      setEnrolledBioUser(biometricService.getEnrolledUser());
+    };
+    checkBio();
+  }, []);
+
+  const handleEnrollBiometric = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile?.email) return;
+    if (!bioPasswordInput) {
+      addToast({
+        type: 'warning',
+        title: 'Contraseña requerida',
+        message: 'Ingresa tu contraseña para vincularla a la huella dactilar de este dispositivo.',
+      });
+      return;
+    }
+
+    try {
+      setIsEnrollingBio(true);
+      const res = await biometricService.enrollBiometric(
+        profile.email,
+        bioPasswordInput,
+        profile.full_name || profile.email.split('@')[0]
+      );
+
+      if (res.ok) {
+        setEnrolledBioUser(biometricService.getEnrolledUser());
+        setShowBioPasswordModal(false);
+        setBioPasswordInput('');
+        addToast({
+          type: 'success',
+          title: 'Huella Dactilar Vinculada',
+          message: 'Ahora puedes iniciar sesión tocando tu sensor de huella móvil.',
+        });
+      } else {
+        addToast({
+          type: 'error',
+          title: 'Error al vincular huella',
+          message: res.error || 'No se pudo completar el registro biométrico.',
+        });
+      }
+    } catch (err: any) {
+      addToast({
+        type: 'error',
+        title: 'Error',
+        message: err?.message || 'Fallo inesperado al vincular huella.',
+      });
+    } finally {
+      setIsEnrollingBio(false);
+    }
+  };
+
+  const handleTestBiometric = async () => {
+    try {
+      setIsTestingBio(true);
+      const res = await biometricService.authenticateWithBiometric();
+      if (res.ok && res.credentials) {
+        addToast({
+          type: 'success',
+          title: '¡Huella Verificada!',
+          message: `Lectura exitosa para el usuario: ${res.credentials.userName || res.credentials.email}`,
+        });
+      } else {
+        addToast({
+          type: 'warning',
+          title: 'Lectura no completada',
+          message: res.error || 'No se pudo verificar la huella.',
+        });
+      }
+    } catch (err: any) {
+      addToast({
+        type: 'error',
+        title: 'Error biométrico',
+        message: err?.message || 'Error durante la lectura de huella.',
+      });
+    } finally {
+      setIsTestingBio(false);
+    }
+  };
+
+  const handleRemoveBiometric = () => {
+    biometricService.removeBiometric();
+    setEnrolledBioUser(null);
+    addToast({
+      type: 'info',
+      title: 'Huella desvinculada',
+      message: 'Se ha desactivado el acceso por huella dactilar en este dispositivo.',
+    });
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -295,7 +402,132 @@ export const SettingsPage: React.FC = () => {
         </form>
       </div>
 
-      {/* 3. Theme & Interface Preferences */}
+      {/* 3. Mobile Fingerprint / Biometric Authentication */}
+      <div className="bg-white dark:bg-stone-900 rounded-2xl border border-stone-200/80 dark:border-stone-800 p-6 shadow-xs space-y-5">
+        <div className="flex items-center justify-between pb-4 border-b border-stone-100 dark:border-stone-800">
+          <div className="flex items-center gap-2">
+            <Fingerprint className="w-4 h-4 text-amber-600" />
+            <h3 className="text-sm font-bold text-stone-900 dark:text-white uppercase tracking-wider">
+              Acceso con Huella Dactilar (Dispositivo Móvil / Biometría)
+            </h3>
+          </div>
+          <Badge variant={enrolledBioUser ? 'emerald' : 'stone'}>
+            {enrolledBioUser ? 'HUELLA ACTIVA' : 'NO VINCULADA'}
+          </Badge>
+        </div>
+
+        <div className="p-4 rounded-xl bg-stone-50 dark:bg-stone-800/40 border border-stone-200 dark:border-stone-700 text-xs space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-stone-700 dark:text-stone-300">
+              Sensor Biométrico en este Dispositivo:
+            </span>
+            {isBiometricSupported ? (
+              <span className="text-emerald-600 font-bold flex items-center gap-1">
+                <CheckCircle className="w-4 h-4" /> Disponible y Compatible (WebAuthn Platform)
+              </span>
+            ) : (
+              <span className="text-stone-500 font-medium">
+                No detectado o no disponible en este navegador
+              </span>
+            )}
+          </div>
+
+          <p className="text-stone-500 dark:text-stone-400 leading-relaxed">
+            Permite iniciar sesión instantáneamente con tu huella dactilar, Touch ID o sensor biométrico integrado en tu smartphone o tablet sin tener que escribir tu contraseña cada vez.
+          </p>
+        </div>
+
+        {enrolledBioUser ? (
+          <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-950/30 border border-amber-300/80 dark:border-amber-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-amber-600" />
+                <span className="text-xs font-bold text-stone-900 dark:text-white">
+                  Huella registrada para {enrolledBioUser.userName} ({enrolledBioUser.email})
+                </span>
+              </div>
+              <span className="text-[11px] text-stone-500 dark:text-stone-400 block">
+                Dispositivo: {enrolledBioUser.deviceName || 'Móvil'} • Registrado el: {new Date(enrolledBioUser.registeredAt).toLocaleDateString()}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleTestBiometric}
+                disabled={isTestingBio}
+                className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Fingerprint className="w-4 h-4" />
+                {isTestingBio ? 'Probando...' : 'Probar Huella'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleRemoveBiometric}
+                className="px-3 py-2 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-700 dark:text-rose-300 text-xs font-semibold transition-colors flex items-center gap-1"
+                title="Desvincular huella de este dispositivo"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Desvincular
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {showBioPasswordModal ? (
+              <form onSubmit={handleEnrollBiometric} className="p-4 rounded-2xl bg-amber-50/60 dark:bg-stone-800 border border-amber-200 dark:border-stone-700 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-amber-600" />
+                  <span className="text-xs font-bold text-stone-900 dark:text-white">
+                    Confirma tu contraseña para vincular el sensor de huella:
+                  </span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="password"
+                    required
+                    placeholder="Tu contraseña actual..."
+                    value={bioPasswordInput}
+                    onChange={(e) => setBioPasswordInput(e.target.value)}
+                    className="flex-1 px-3.5 py-2 text-xs rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 text-stone-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={isEnrollingBio || !bioPasswordInput}
+                      className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <Fingerprint className="w-4 h-4" />
+                      {isEnrollingBio ? 'Escaneando sensor...' : 'Escanear y Guardar Huella'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowBioPasswordModal(false)}
+                      className="px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 text-xs font-semibold text-stone-600 dark:text-stone-300"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              </form>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowBioPasswordModal(true)}
+                disabled={!isBiometricSupported}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <Fingerprint className="w-4 h-4 text-amber-200" />
+                Vincular Huella Dactilar en este Dispositivo
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 4. Theme & Interface Preferences */}
       <div className="bg-white dark:bg-stone-900 rounded-2xl border border-stone-200/80 dark:border-stone-800 p-6 shadow-xs space-y-4">
         <div className="flex items-center gap-2 pb-4 border-b border-stone-100 dark:border-stone-800">
           <Moon className="w-4 h-4 text-amber-600" />

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { biometricService, EnrolledBiometricUser } from '../services/biometric.service';
 import {
   Lock,
   Mail,
@@ -13,6 +14,9 @@ import {
   AlertCircle,
   CheckCircle2,
   Sparkles,
+  Fingerprint,
+  Smartphone,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface LoginPageProps {
@@ -28,8 +32,54 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberBiometric, setRememberBiometric] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
+
+  // Biometric state
+  const [isBiometricSupported, setIsBiometricSupported] = useState(false);
+  const [enrolledUser, setEnrolledUser] = useState<EnrolledBiometricUser | null>(null);
+  const [isBiometricScanning, setIsBiometricScanning] = useState(false);
+
+  useEffect(() => {
+    const checkBiometrics = async () => {
+      const supported = await biometricService.isBiometricAvailable();
+      setIsBiometricSupported(supported);
+      const enrolled = biometricService.getEnrolledUser();
+      setEnrolledUser(enrolled);
+      if (enrolled?.email && !email) {
+        setEmail(enrolled.email);
+      }
+    };
+    checkBiometrics();
+  }, []);
+
+  const handleBiometricLogin = async () => {
+    setErrorMsg(null);
+    setSuccessNotice(null);
+    setIsBiometricScanning(true);
+
+    try {
+      const res = await biometricService.authenticateWithBiometric();
+      if (res.ok && res.credentials) {
+        setSuccessNotice(`¡Huella verificada! Ingresando como ${res.credentials.userName || res.credentials.email}...`);
+        const { error } = await signIn(res.credentials.email, res.credentials.password);
+        if (!error) {
+          setTimeout(() => {
+            onLoginSuccess();
+          }, 400);
+        } else {
+          setErrorMsg(error.message);
+        }
+      } else if (res.error) {
+        setErrorMsg(res.error);
+      }
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Error durante la autenticación por huella.');
+    } finally {
+      setIsBiometricScanning(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,6 +93,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       }
       const { error } = await signUp(email, password, fullName, 'admin');
       if (!error) {
+        // If user opted to enroll biometric
+        if (rememberBiometric && isBiometricSupported) {
+          try {
+            await biometricService.enrollBiometric(email, password, fullName);
+          } catch (bioErr) {
+            console.warn('Biometric auto-enrollment skipped:', bioErr);
+          }
+        }
         setSuccessNotice('¡Cuenta registrada exitosamente!');
         setTimeout(() => {
           onLoginSuccess();
@@ -53,6 +111,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     } else {
       const { error } = await signIn(email, password);
       if (!error) {
+        // If remember biometric is checked and not enrolled, enroll it now
+        if (rememberBiometric && isBiometricSupported) {
+          try {
+            await biometricService.enrollBiometric(email, password, fullName || email.split('@')[0]);
+          } catch (bioErr) {
+            console.warn('Biometric enrollment skipped:', bioErr);
+          }
+        }
         onLoginSuccess();
       } else {
         setErrorMsg(error.message);
@@ -110,9 +176,33 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
             <p className="text-xs text-stone-500 dark:text-stone-400">
               {isSignUp
                 ? 'Registra tus datos de acceso al sistema contable'
-                : 'Ingresa con tu correo y contraseña registrados'}
+                : 'Ingresa con tu huella dactilar o con correo y contraseña'}
             </p>
           </div>
+
+          {/* Quick Fingerprint Login CTA if enrolled on this device */}
+          {!isSignUp && enrolledUser && (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-600/10 to-emerald-500/10 border border-amber-300/80 dark:border-amber-700/80 space-y-2.5 text-center">
+              <div className="flex items-center justify-center gap-1.5 text-xs font-semibold text-stone-800 dark:text-stone-200">
+                <Smartphone className="w-3.5 h-3.5 text-amber-600" />
+                <span>Huella vinculada para <strong>{enrolledUser.userName || enrolledUser.email}</strong></span>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleBiometricLogin}
+                disabled={isBiometricScanning || isLoading}
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-bold text-xs shadow-md shadow-amber-600/30 flex items-center justify-center gap-2.5 transition-all active:scale-98 disabled:opacity-50"
+              >
+                <Fingerprint className={`w-5 h-5 text-amber-200 ${isBiometricScanning ? 'animate-pulse' : ''}`} />
+                <span>{isBiometricScanning ? 'Verificando huella...' : 'Acceder con Huella Dactilar'}</span>
+              </button>
+
+              <p className="text-[10px] text-stone-500 dark:text-stone-400">
+                Toca el botón y coloca tu dedo en el sensor de tu dispositivo móvil
+              </p>
+            </div>
+          )}
 
           {/* Segmented Control for Login vs SignUp */}
           <div className="grid grid-cols-2 p-1 rounded-2xl bg-stone-100 dark:bg-stone-800 text-xs font-semibold">
@@ -240,6 +330,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
               </div>
             </div>
 
+            {/* Biometric Opt-in Checkbox */}
+            {isBiometricSupported && (
+              <div className="p-2.5 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200/80 dark:border-stone-700/80">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-stone-700 dark:text-stone-300">
+                  <input
+                    type="checkbox"
+                    checked={rememberBiometric}
+                    onChange={(e) => setRememberBiometric(e.target.checked)}
+                    className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 focus:ring-offset-0"
+                  />
+                  <span className="flex items-center gap-1.5">
+                    <Fingerprint className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                    <span>Habilitar inicio con <strong>Huella Dactilar</strong> en este móvil</span>
+                  </span>
+                </label>
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={isLoading}
@@ -250,7 +358,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 ? 'Procesando...'
                 : isSignUp
                 ? 'Registrar y Acceder'
-                : 'Iniciar Sesión'}
+                : 'Iniciar Sesión con Contraseña'}
             </button>
           </form>
         </div>
