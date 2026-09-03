@@ -247,10 +247,10 @@ export const SqlScriptModal: React.FC<{ isOpen: boolean; onClose: () => void }> 
         </div>
 
         <div className="p-3 bg-stone-50 dark:bg-stone-800/50 rounded-xl text-xs text-stone-600 dark:text-stone-300">
-          <p className="font-semibold text-stone-800 dark:text-stone-200 mb-1">Pasos recomendados:</p>
+          <p className="font-semibold text-stone-800 dark:text-stone-200 mb-1">Pasos recomendados para máxima seguridad:</p>
           <p>1. Pega y ejecuta el SQL en <strong>Supabase SQL Editor</strong>.</p>
-          <p>2. Crea tu usuario en <strong>Authentication → Users</strong>.</p>
-          <p>3. El primer usuario registrado obtendrá automáticamente el rol <strong>admin</strong>.</p>
+          <p>2. Crea las cuentas de acceso autorizadas en <strong>Authentication → Users</strong>.</p>
+          <p>3. Desactiva el registro público en <strong>Authentication → Providers → Email → "Enable Sign up: OFF"</strong> para impedir registros no autorizados.</p>
         </div>
       </div>
     </Modal>

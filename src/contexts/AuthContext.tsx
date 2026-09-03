@@ -9,6 +9,8 @@ interface AuthContextType {
   isAdmin: boolean;
   isFrank: boolean;
   isLoading: boolean;
+  isRegistrationAllowed: boolean;
+  setRegistrationAllowed: (allowed: boolean) => void;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, fullName: string, role?: UserRole) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -22,6 +24,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRegistrationAllowed, setIsRegistrationAllowedState] = useState<boolean>(() => authService.isRegistrationAllowed());
+
+  const setRegistrationAllowed = (allowed: boolean) => {
+    authService.setRegistrationAllowed(allowed);
+    setIsRegistrationAllowedState(allowed);
+  };
 
   const refreshProfile = async () => {
     setIsLoading(true);
@@ -108,6 +116,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdmin,
         isFrank,
         isLoading,
+        isRegistrationAllowed,
+        setRegistrationAllowed,
         signIn,
         signUp,
         signOut,

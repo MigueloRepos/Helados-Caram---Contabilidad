@@ -24,7 +24,7 @@ interface LoginPageProps {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
-  const { signIn, signUp, isLoading } = useAuth();
+  const { signIn, signUp, isLoading, isRegistrationAllowed } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
   const [isSignUp, setIsSignUp] = useState(false);
@@ -40,6 +40,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
   const [isBiometricSupported, setIsBiometricSupported] = useState(false);
   const [enrolledUser, setEnrolledUser] = useState<EnrolledBiometricUser | null>(null);
   const [isBiometricScanning, setIsBiometricScanning] = useState(false);
+
+  useEffect(() => {
+    // If registration is not allowed and currently in signup mode, switch back to login
+    if (!isRegistrationAllowed && isSignUp) {
+      setIsSignUp(false);
+    }
+  }, [isRegistrationAllowed, isSignUp]);
 
   useEffect(() => {
     const checkBiometrics = async () => {
@@ -87,6 +94,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     setSuccessNotice(null);
 
     if (isSignUp) {
+      if (!isRegistrationAllowed) {
+        setErrorMsg('El registro de nuevos usuarios está deshabilitado. Solo los 2 usuarios autorizados tienen acceso a la plataforma.');
+        return;
+      }
       if (!fullName.trim()) {
         setErrorMsg('Por favor ingresa tu nombre completo.');
         return;
@@ -123,14 +134,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       } else {
         setErrorMsg(error.message);
       }
-    }
-  };
-
-  const handleQuickSwitchToSignUp = () => {
-    setIsSignUp(true);
-    setErrorMsg(null);
-    if (!fullName) {
-      setFullName(email.split('@')[0] || 'Administrador');
     }
   };
 
@@ -176,9 +179,31 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
             <p className="text-xs text-stone-500 dark:text-stone-400">
               {isSignUp
                 ? 'Registra tus datos de acceso al sistema contable'
-                : 'Ingresa con tu huella dactilar o con correo y contraseña'}
+                : 'Ingresa con tus credenciales o huella dactilar'}
             </p>
           </div>
+
+          {/* Access Policy Protection Banner when registration is blocked */}
+          {!isRegistrationAllowed ? (
+            <div className="p-3 rounded-2xl bg-amber-500/10 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-800/80 flex items-center gap-2.5 text-xs text-stone-700 dark:text-stone-300">
+              <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <div className="leading-tight">
+                <span className="font-bold text-stone-900 dark:text-white block">
+                  Acceso Restringido
+                </span>
+                <span className="text-[11px] text-stone-500 dark:text-stone-400">
+                  Plataforma privada con registro deshabilitado.
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="p-3 rounded-2xl bg-emerald-500/10 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 flex items-center gap-2.5 text-xs text-emerald-800 dark:text-emerald-300">
+              <AlertCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span className="text-[11px]">
+                Modo de registro de usuarios habilitado temporalmente.
+              </span>
+            </div>
+          )}
 
           {/* Quick Fingerprint Login CTA if enrolled on this device */}
           {!isSignUp && enrolledUser && (
@@ -204,41 +229,43 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
             </div>
           )}
 
-          {/* Segmented Control for Login vs SignUp */}
-          <div className="grid grid-cols-2 p-1 rounded-2xl bg-stone-100 dark:bg-stone-800 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => {
-                setIsSignUp(false);
-                setErrorMsg(null);
-                setSuccessNotice(null);
-              }}
-              className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                !isSignUp
-                  ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-white shadow-xs font-bold'
-                  : 'text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200'
-              }`}
-            >
-              <LogIn className="w-3.5 h-3.5" />
-              Iniciar Sesión
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setIsSignUp(true);
-                setErrorMsg(null);
-                setSuccessNotice(null);
-              }}
-              className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                isSignUp
-                  ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-white shadow-xs font-bold'
-                  : 'text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200'
-              }`}
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              Crear Cuenta
-            </button>
-          </div>
+          {/* Segmented Control for Login vs SignUp ONLY if registration is explicitly allowed */}
+          {isRegistrationAllowed && (
+            <div className="grid grid-cols-2 p-1 rounded-2xl bg-stone-100 dark:bg-stone-800 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(false);
+                  setErrorMsg(null);
+                  setSuccessNotice(null);
+                }}
+                className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                  !isSignUp
+                    ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-white shadow-xs font-bold'
+                    : 'text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200'
+                }`}
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                Iniciar Sesión
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(true);
+                  setErrorMsg(null);
+                  setSuccessNotice(null);
+                }}
+                className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                  isSignUp
+                    ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-white shadow-xs font-bold'
+                    : 'text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200'
+                }`}
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                Crear Cuenta
+              </button>
+            </div>
+          )}
 
           {/* Success Notice */}
           {successNotice && (
@@ -248,31 +275,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
             </div>
           )}
 
-          {/* Error Message with Smart Actions */}
+          {/* Error Message */}
           {errorMsg && (
             <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300 space-y-2">
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                 <span className="leading-relaxed">{errorMsg}</span>
               </div>
-              
-              {/* If user tries to login without an account */}
-              {!isSignUp && errorMsg.includes('usuario no registrado') && (
-                <button
-                  type="button"
-                  onClick={handleQuickSwitchToSignUp}
-                  className="w-full py-1.5 px-3 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-xs"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Registrar este usuario ahora
-                </button>
-              )}
             </div>
           )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            {isSignUp && (
+            {isSignUp && isRegistrationAllowed && (
               <div>
                 <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1">
                   Nombre Completo
@@ -297,7 +312,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 <input
                   type="email"
                   required
-                  placeholder="admin@heladoscaram.com"
+                  placeholder="usuario@correo.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-9 pr-3.5 py-2.5 text-xs rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-stone-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
@@ -358,7 +373,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
                 ? 'Procesando...'
                 : isSignUp
                 ? 'Registrar y Acceder'
-                : 'Iniciar Sesión con Contraseña'}
+                : 'Iniciar Sesión'}
             </button>
           </form>
         </div>

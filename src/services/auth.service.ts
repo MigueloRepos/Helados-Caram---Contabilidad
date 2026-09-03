@@ -1,10 +1,39 @@
 import { supabase, activeSupabaseUrl } from '../lib/supabase';
 import { UserProfile, UserRole } from '../types';
 
+export const REGISTRATION_POLICY_STORAGE_KEY = 'hc_allow_user_registration';
+
+export const AUTHORIZED_USERS = [
+  {
+    role: 'admin' as UserRole,
+    title: 'Administrador General',
+    name: 'Administración Contable',
+    description: 'Gestión integral: cierres diarios, control de gastos, auditoría contable, estadísticas y catálogo de sabores.',
+    badge: 'ADMIN',
+  },
+  {
+    role: 'frank' as UserRole,
+    title: 'Frank (Entregas & Ventas)',
+    name: 'Frank - Cierres de Turno',
+    description: 'Registro de ventas de vasos, deducción de gastos diarios y reporte de entrega de efectivo a Frank.',
+    badge: 'FRANK',
+  },
+];
+
 export function formatAuthError(error: any): Error {
   if (!error) return new Error('Error desconocido');
   const msg = typeof error === 'string' ? error : error.message || '';
 
+  if (
+    msg.toLowerCase().includes('signup is disabled') ||
+    msg.toLowerCase().includes('signups not allowed') ||
+    msg.toLowerCase().includes('signup disabled') ||
+    msg.toLowerCase().includes('sign up is not allowed')
+  ) {
+    return new Error(
+      'El registro de nuevos usuarios está deshabilitado en esta plataforma.'
+    );
+  }
   if (msg.toLowerCase().includes('invalid api key') || msg.toLowerCase().includes('apikey')) {
     return new Error(
       'Clave API de Supabase inválida. Asegúrate de copiar la clave "anon public" (formato JWT que empieza con "eyJ...") desde Supabase > Project Settings > API.'
@@ -12,7 +41,7 @@ export function formatAuthError(error: any): Error {
   }
   if (msg.toLowerCase().includes('invalid login credentials')) {
     return new Error(
-      'Credenciales incorrectas o usuario no registrado en Supabase. Si es tu primera vez, haz clic en "Crear Cuenta" para registrar este usuario y contraseña.'
+      'Credenciales incorrectas. Verifica tu correo y contraseña.'
     );
   }
   if (msg.toLowerCase().includes('email not confirmed')) {
@@ -36,6 +65,22 @@ export function formatAuthError(error: any): Error {
 }
 
 export const authService = {
+  isRegistrationAllowed(): boolean {
+    if (typeof window === 'undefined') return false;
+    const stored = localStorage.getItem(REGISTRATION_POLICY_STORAGE_KEY);
+    // Default is false (registration blocked, only 2 authorized users)
+    return stored === 'true';
+  },
+
+  setRegistrationAllowed(allowed: boolean): void {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(REGISTRATION_POLICY_STORAGE_KEY, allowed ? 'true' : 'false');
+    }
+  },
+
+  getAuthorizedUsers() {
+    return AUTHORIZED_USERS;
+  },
   async testConnection(): Promise<{ ok: boolean; message: string }> {
     try {
       const { error } = await supabase.auth.getSession();
@@ -150,6 +195,16 @@ export const authService = {
     fullName: string,
     role: UserRole = 'admin'
   ): Promise<{ user: any | null; session: any | null; error: Error | null }> {
+    if (!this.isRegistrationAllowed()) {
+      return {
+        user: null,
+        session: null,
+        error: new Error(
+          'El registro de nuevos usuarios está deshabilitado.'
+        ),
+      };
+    }
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),

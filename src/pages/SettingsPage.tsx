@@ -25,10 +25,15 @@ import {
   Smartphone,
   Trash2,
   Lock,
+  UserX,
+  UserCheck,
+  Users,
+  AlertTriangle,
+  Info,
 } from 'lucide-react';
 
 export const SettingsPage: React.FC = () => {
-  const { profile, isAdmin, updateProfile } = useAuth();
+  const { profile, isAdmin, updateProfile, isRegistrationAllowed, setRegistrationAllowed } = useAuth();
   const { theme, toggleTheme, addToast } = useTheme();
 
   const [fullName, setFullName] = useState(profile?.full_name || '');
@@ -187,6 +192,23 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  const handleToggleRegistration = (enable: boolean) => {
+    setRegistrationAllowed(enable);
+    if (!enable) {
+      addToast({
+        type: 'success',
+        title: 'Registro Bloqueado',
+        message: 'Se ha impedido el nuevo registro de usuarios. Solo los 2 usuarios autorizados tienen acceso.',
+      });
+    } else {
+      addToast({
+        type: 'warning',
+        title: 'Registro Habilitado Temporalmente',
+        message: 'El registro de usuarios está abierto. Recuerda volver a bloquearlo tras crear las cuentas autorizadas.',
+      });
+    }
+  };
+
   const handleSaveCredentials = (e: React.FormEvent) => {
     e.preventDefault();
     setCustomSupabaseCredentials(urlInput, keyInput);
@@ -317,7 +339,94 @@ export const SettingsPage: React.FC = () => {
         </form>
       </div>
 
-      {/* 2. Supabase Integration & Database Controls */}
+      {/* 2. User Registration & Access Control */}
+      <div className="bg-white dark:bg-stone-900 rounded-2xl border border-stone-200/80 dark:border-stone-800 p-6 shadow-xs space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-stone-100 dark:border-stone-800">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-stone-900 dark:text-white uppercase tracking-wider">
+                Control de Acceso y Política de Registro
+              </h3>
+              <p className="text-[11px] text-stone-500 dark:text-stone-400">
+                Restricción exclusiva a las cuentas preautorizadas
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant={!isRegistrationAllowed ? 'emerald' : 'rose'}>
+              {!isRegistrationAllowed ? '🔒 REGISTRO BLOQUEADO' : '⚠️ REGISTRO ABIERTO'}
+            </Badge>
+          </div>
+        </div>
+
+        {/* Policy Status Banner */}
+        <div className={`p-4 rounded-2xl border text-xs space-y-3 ${
+          !isRegistrationAllowed
+            ? 'bg-emerald-50/60 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/80 text-emerald-900 dark:text-emerald-200'
+            : 'bg-amber-50/60 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/80 text-amber-900 dark:text-amber-200'
+        }`}>
+          <div className="flex items-start gap-2.5">
+            {!isRegistrationAllowed ? (
+              <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+            ) : (
+              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            )}
+            <div className="space-y-1">
+              <p className="font-bold text-xs">
+                {!isRegistrationAllowed
+                  ? 'El registro de nuevos usuarios está estrictamente DESHABILITADO.'
+                  : 'El registro de nuevos usuarios está TEMPORALMENTE HABILITADO.'}
+              </p>
+              <p className="text-[11px] leading-relaxed opacity-90">
+                {!isRegistrationAllowed
+                  ? 'Ninguna persona externa puede registrar cuentas nuevas en la plataforma. El acceso al sistema se encuentra restringido a las cuentas autorizadas.'
+                  : 'Cualquier persona con el enlace podría registrarse mientras esta opción esté activa. Te recomendamos volver a bloquear el registro tan pronto como concluyas la configuración.'}
+              </p>
+            </div>
+          </div>
+
+          {/* Admin toggle action */}
+          {isAdmin && (
+            <div className="pt-2 border-t border-emerald-200/60 dark:border-emerald-800/60 flex flex-wrap items-center justify-between gap-3">
+              <span className="text-[11px] font-semibold text-stone-700 dark:text-stone-300">
+                Acción de Administrador:
+              </span>
+              {!isRegistrationAllowed ? (
+                <button
+                  type="button"
+                  onClick={() => handleToggleRegistration(true)}
+                  className="px-3.5 py-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 text-amber-800 dark:text-amber-200 text-xs font-bold transition-colors flex items-center gap-1.5 shadow-xs"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  Permitir Registro Temporalmente
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleToggleRegistration(false)}
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition-colors flex items-center gap-1.5 shadow-xs"
+                >
+                  <UserX className="w-3.5 h-3.5" />
+                  Bloquear Nuevos Registros (Recomendado)
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Security Hardening Instruction */}
+        <div className="p-3 rounded-xl bg-stone-100/70 dark:bg-stone-800/40 border border-stone-200/80 dark:border-stone-700/80 text-[11px] text-stone-600 dark:text-stone-400 flex items-start gap-2">
+          <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <p className="leading-relaxed">
+            <strong>Protección multinivel:</strong> Por motivos de privacidad y seguridad, no se exponen nombres ni identificadores de usuarios en el portal de acceso.
+          </p>
+        </div>
+      </div>
+
+      {/* 3. Supabase Integration & Database Controls */}
       <div className="bg-white dark:bg-stone-900 rounded-2xl border border-stone-200/80 dark:border-stone-800 p-6 shadow-xs space-y-5">
         <div className="flex items-center justify-between pb-4 border-b border-stone-100 dark:border-stone-800">
           <div className="flex items-center gap-2">
