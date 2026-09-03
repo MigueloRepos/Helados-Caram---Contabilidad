@@ -2,6 +2,12 @@ import React, { useState } from 'react';
 import { DailyClosing } from '../../types';
 import { Modal } from '../ui/Modal';
 import { formatDateFull, formatCurrency, formatNumber } from '../../lib/utils';
+import {
+  getClosingPresentation,
+  getPresentationConfig,
+  formatUnitCount,
+  PresentationBadge,
+} from '../../lib/presentation';
 import { exportService } from '../../services/export.service';
 import {
   Calendar,
@@ -22,6 +28,7 @@ import {
   Eye,
   Minimize2,
   Receipt,
+  Layers,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -46,6 +53,9 @@ export const ClosingDetailModal: React.FC<ClosingDetailModalProps> = ({
   const [isReadMode, setIsReadMode] = useState(false);
 
   if (!closing) return null;
+
+  const presentationType = getClosingPresentation(closing);
+  const presentationConfig = getPresentationConfig(presentationType);
 
   const handlePrint = () => {
     window.print();
@@ -76,11 +86,12 @@ export const ClosingDetailModal: React.FC<ClosingDetailModalProps> = ({
       <div className={cn("space-y-4 text-xs transition-all", isReadMode && "p-2 font-mono print:p-0")}>
         {/* Header Control Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900/60 print:hidden">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <User className="w-4 h-4 text-amber-700 dark:text-amber-400" />
             <span className="text-stone-700 dark:text-stone-300">
               Registrado por: <strong>{closing.profile?.full_name || 'Usuario'}</strong>
             </span>
+            <PresentationBadge type={presentationType} size="sm" />
           </div>
 
           <div className="flex items-center gap-1.5 self-end sm:self-auto flex-wrap">
@@ -143,13 +154,18 @@ export const ClosingDetailModal: React.FC<ClosingDetailModalProps> = ({
               <div className="text-[10px] text-stone-500">
                 Atendido por: {closing.profile?.full_name || 'Personal Autorizado'}
               </div>
+              <div className="mt-1">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300">
+                  {presentationConfig.name} (${formatNumber(presentationConfig.unitPrice)} c/u)
+                </span>
+              </div>
             </div>
 
             {/* Sales & Flavors in Ticket format */}
             <div className="space-y-1.5 pb-3 border-b border-dashed border-stone-300 dark:border-stone-700 text-xs">
               <div className="flex justify-between font-bold text-stone-900 dark:text-white">
-                <span>TOTAL VASOS:</span>
-                <span>{formatNumber(closing.total_cups)} u.</span>
+                <span>TOTAL {presentationConfig.unitPlural.toUpperCase()}:</span>
+                <span>{formatNumber(closing.total_cups)} {presentationConfig.unitPlural}</span>
               </div>
               <div className="flex justify-between font-bold text-emerald-600 dark:text-emerald-400">
                 <span>VENTAS BRUTAS:</span>
@@ -158,11 +174,11 @@ export const ClosingDetailModal: React.FC<ClosingDetailModalProps> = ({
 
               {closing.flavors && closing.flavors.length > 0 && (
                 <div className="pt-2 pl-2 space-y-1 text-[11px] text-stone-600 dark:text-stone-300 border-t border-stone-100 dark:border-stone-800">
-                  <span className="font-bold text-[10px] uppercase text-stone-400 block">Desglose:</span>
+                  <span className="font-bold text-[10px] uppercase text-stone-400 block">Desglose por Sabor:</span>
                   {closing.flavors.map((f, i) => (
                     <div key={i} className="flex justify-between">
                       <span>• {f.flavor?.name || f.flavor_name || 'Sabor'}</span>
-                      <span className="font-semibold">{f.quantity} u.</span>
+                      <span className="font-semibold">{f.quantity} {presentationConfig.unitPlural}</span>
                     </div>
                   ))}
                 </div>
@@ -224,19 +240,22 @@ export const ClosingDetailModal: React.FC<ClosingDetailModalProps> = ({
         ) : (
           /* STANDARD FULL DASHBOARD MODAL VIEW */
           <>
-            {/* 1. VENTAS */}
+            {/* 1. VENTAS & PRESENTACIÓN */}
             <div className="p-4 rounded-xl bg-white dark:bg-stone-800/40 border border-stone-200 dark:border-stone-700 space-y-2">
               <div className="flex items-center justify-between border-b border-stone-100 dark:border-stone-700/60 pb-2">
-                <span className="font-bold uppercase tracking-wider text-stone-900 dark:text-white flex items-center gap-1.5">
-                  <Coffee className="w-4 h-4 text-amber-600" />
-                  VENTAS
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold uppercase tracking-wider text-stone-900 dark:text-white flex items-center gap-1.5">
+                    <Coffee className="w-4 h-4 text-amber-600" />
+                    VENTAS
+                  </span>
+                  <PresentationBadge type={presentationType} size="sm" />
+                </div>
                 <div className="text-right">
                   <span className="font-bold text-sm text-emerald-600 dark:text-emerald-400 block">
                     {formatCurrency(closing.total_sales)}
                   </span>
                   <span className="text-[11px] text-stone-400">
-                    {formatNumber(closing.total_cups)} vasos vendidos
+                    {formatUnitCount(closing.total_cups, presentationType)} a ${formatNumber(presentationConfig.unitPrice)} c/u
                   </span>
                 </div>
               </div>
@@ -244,9 +263,14 @@ export const ClosingDetailModal: React.FC<ClosingDetailModalProps> = ({
 
             {/* 2. SABORES DESGLOSE */}
             <div className="p-4 rounded-xl bg-white dark:bg-stone-800/40 border border-stone-200 dark:border-stone-700 space-y-2.5">
-              <span className="font-bold uppercase tracking-wider text-stone-900 dark:text-white block border-b border-stone-100 dark:border-stone-700/60 pb-1.5">
-                SABORES
-              </span>
+              <div className="flex items-center justify-between border-b border-stone-100 dark:border-stone-700/60 pb-1.5">
+                <span className="font-bold uppercase tracking-wider text-stone-900 dark:text-white">
+                  SABORES ({presentationConfig.name})
+                </span>
+                <span className="text-[11px] text-stone-400">
+                  Total: {formatUnitCount(closing.total_cups, presentationType)}
+                </span>
+              </div>
               {closing.flavors && closing.flavors.length > 0 ? (
                 <div className="grid grid-cols-2 gap-2">
                   {closing.flavors.map((f, i) => (
@@ -255,7 +279,7 @@ export const ClosingDetailModal: React.FC<ClosingDetailModalProps> = ({
                         {f.flavor?.name || f.flavor_name || 'Sabor'}
                       </span>
                       <span className="font-bold text-stone-900 dark:text-white">
-                        {f.quantity} vasos
+                        {f.quantity} {presentationConfig.unitPlural}
                       </span>
                     </div>
                   ))}
@@ -393,4 +417,5 @@ export const ClosingDetailModal: React.FC<ClosingDetailModalProps> = ({
     </Modal>
   );
 };
+
 

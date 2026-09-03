@@ -4,6 +4,8 @@
 
 export type UserRole = 'admin' | 'frank';
 
+export type ClosingPresentationType = 'cups' | 'tubs_4_5l';
+
 export interface UserProfile {
   id: string;
   full_name: string | null;
@@ -49,12 +51,16 @@ export interface DailyClosing {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  presentation_type?: ClosingPresentationType;
+  unit_price?: number;
   profile?: UserProfile;
   flavors?: DailyClosingFlavor[];
 }
 
 export interface DailyClosingFormData {
   closing_date: string;
+  presentation_type?: ClosingPresentationType;
+  unit_price?: number;
   responsable_name?: string;
   notes?: string;
   total_cups: number;
@@ -111,6 +117,7 @@ export interface HistoryFilterParams {
   year?: string;
   responsable?: string;
   searchTerm?: string;
+  presentationType?: ClosingPresentationType | 'all';
   sortBy?: 'recent' | 'oldest' | 'highest_sales' | 'highest_expenses' | 'highest_cups';
 }
 

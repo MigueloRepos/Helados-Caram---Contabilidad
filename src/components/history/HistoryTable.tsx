@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
 import { DailyClosing } from '../../types';
 import { formatCurrency, formatNumber } from '../../lib/utils';
+import {
+  getClosingPresentation,
+  getPresentationConfig,
+  formatUnitCount,
+  PresentationBadge,
+} from '../../lib/presentation';
 import { exportService } from '../../services/export.service';
 import { Eye, Edit, Trash2, Calendar, User, ArrowRight, FileText, Download } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -59,8 +65,9 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({
           <thead>
             <tr className="border-b border-stone-200 dark:border-stone-800 bg-stone-50/80 dark:bg-stone-800/50 text-stone-500 dark:text-stone-400 font-bold uppercase tracking-wider text-[11px]">
               <th className="py-3.5 px-4">Fecha</th>
+              <th className="py-3.5 px-4">Tipo</th>
               <th className="py-3.5 px-4">Responsable</th>
-              <th className="py-3.5 px-4 text-right">Vasos</th>
+              <th className="py-3.5 px-4 text-right">Cantidad</th>
               <th className="py-3.5 px-4 text-right">Ventas ($)</th>
               <th className="py-3.5 px-4 text-right">Gastos ($)</th>
               <th className="py-3.5 px-4 text-right">Entregado Frank</th>
@@ -72,6 +79,8 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({
             {closings.map((closing) => {
               const isBalancePositive = closing.balance >= 0;
               const isDownloadingThis = downloadingId === closing.id;
+              const presentationType = getClosingPresentation(closing);
+              const presentationConfig = getPresentationConfig(presentationType);
 
               return (
                 <tr
@@ -87,6 +96,11 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({
                     </div>
                   </td>
 
+                  {/* Tipo */}
+                  <td className="py-3.5 px-4 whitespace-nowrap">
+                    <PresentationBadge type={presentationType} size="sm" />
+                  </td>
+
                   {/* Responsable */}
                   <td className="py-3.5 px-4 text-stone-600 dark:text-stone-300">
                     <div className="flex items-center gap-1.5">
@@ -97,9 +111,10 @@ export const HistoryTable: React.FC<HistoryTableProps> = ({
                     </div>
                   </td>
 
-                  {/* Vasos */}
+                  {/* Cantidad */}
                   <td className="py-3.5 px-4 text-right font-bold text-stone-900 dark:text-white">
-                    {formatNumber(closing.total_cups)}
+                    <span>{formatNumber(closing.total_cups)}</span>{' '}
+                    <span className="text-[10px] font-normal text-stone-500">{presentationConfig.unitPlural}</span>
                   </td>
 
                   {/* Ventas */}

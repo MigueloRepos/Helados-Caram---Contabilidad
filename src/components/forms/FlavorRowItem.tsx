@@ -6,6 +6,8 @@ interface FlavorRowItemProps {
   index: number;
   flavorId: string;
   quantity: number;
+  unitLabel?: string;
+  unitPlaceholder?: string;
   availableFlavors: Flavor[];
   onFlavorChange: (index: number, flavorId: string) => void;
   onQuantityChange: (index: number, quantity: number) => void;
@@ -18,6 +20,8 @@ export const FlavorRowItem: React.FC<FlavorRowItemProps> = ({
   index,
   flavorId,
   quantity,
+  unitLabel = 'u.',
+  unitPlaceholder = 'Cantidad',
   availableFlavors,
   onFlavorChange,
   onQuantityChange,
@@ -125,12 +129,12 @@ export const FlavorRowItem: React.FC<FlavorRowItemProps> = ({
           <input
             type="number"
             min="0"
-            placeholder="Vasos"
+            placeholder={unitPlaceholder}
             value={quantity === 0 ? '' : quantity}
             onChange={(e) => onQuantityChange(index, Math.max(0, parseInt(e.target.value) || 0))}
             className="w-full px-3 py-2 text-xs rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-white font-semibold text-right focus:ring-2 focus:ring-amber-500 focus:outline-none"
           />
-          <span className="text-[11px] text-stone-400">u.</span>
+          <span className="text-[11px] text-stone-400 whitespace-nowrap">{unitLabel}</span>
         </div>
 
         <button

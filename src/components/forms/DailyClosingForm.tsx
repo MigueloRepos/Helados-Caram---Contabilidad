@@ -2,8 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFlavors } from '../../hooks/useFlavors';
 import { useClosings } from '../../hooks/useClosings';
-import { DailyClosing, DailyClosingFormData } from '../../types';
+import { DailyClosing, DailyClosingFormData, ClosingPresentationType } from '../../types';
 import { getTodayDateString, formatCurrency, formatNumber } from '../../lib/utils';
+import {
+  PRESENTATIONS,
+  getClosingPresentation,
+  getPresentationConfig,
+  formatUnitCount,
+  PRICE_PER_CUP,
+  PRICE_PER_TUB_4_5L,
+} from '../../lib/presentation';
 import { FlavorRowItem } from './FlavorRowItem';
 import { ClosingSummaryCard } from './ClosingSummaryCard';
 import { Modal } from '../ui/Modal';
@@ -25,6 +33,7 @@ import {
   IceCream,
   X,
   Check,
+  Layers,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -34,8 +43,6 @@ interface DailyClosingFormProps {
   onSuccess?: (closing: DailyClosing) => void;
   onCancel?: () => void;
 }
-
-const PRICE_PER_CUP = 200; // $200 por vaso vendido
 
 const POPULAR_FLAVOR_SUGGESTIONS = [
   'Mantecado',
@@ -65,6 +72,17 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
   } = useFlavors(false);
   const { createClosing, updateClosing, isCreating, isUpdating, closings } = useClosings();
 
+  // Presentation State: 'cups' ($200) vs 'tubs_4_5l' ($4000)
+  const [presentationType, setPresentationType] = useState<ClosingPresentationType>(() => {
+    if (initialData) {
+      return getClosingPresentation(initialData);
+    }
+    return 'cups';
+  });
+
+  const presentationConfig = getPresentationConfig(presentationType);
+  const currentPricePerUnit = presentationConfig.unitPrice;
+
   // Form State
   const [closingDate, setClosingDate] = useState(
     initialData?.closing_date || initialDate || getTodayDateString()
@@ -83,8 +101,8 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
   const [otherExpenses, setOtherExpenses] = useState<number | ''>(initialData ? initialData.other_expenses : 0);
   const [deliveredToFrank, setDeliveredToFrank] = useState<number | ''>(initialData ? initialData.delivered_to_frank : 0);
 
-  // Auto-calculation option state (default enabled for instant calculation by $200)
-  const [autoCalcBy200, setAutoCalcBy200] = useState<boolean>(true);
+  // Auto-calculation option state (default enabled for instant unit price calculation)
+  const [autoCalc, setAutoCalc] = useState<boolean>(true);
 
   // Manual Flavor Creator State
   const [isManualFlavorOpen, setIsManualFlavorOpen] = useState(false);
@@ -133,37 +151,45 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
   const balance = numSales - totalExpenses;
   const remainingBalance = balance - numDeliveredToFrank;
 
-  // Total cups assigned to flavors
+  // Total units assigned to flavors
   const totalFlavorsCups = selectedFlavors.reduce((sum, f) => sum + (f.quantity || 0), 0);
   const cupsDifference = numCups - totalFlavorsCups;
   const hasCupsDiscrepancy = numCups > 0 && cupsDifference !== 0;
 
-  // Expected calculated sales based on 200 per cup
-  const calculatedSalesBy200 = numCups * PRICE_PER_CUP;
-  const isSalesMatching200 = numCups > 0 && numSales === calculatedSalesBy200;
+  // Expected calculated sales based on current presentation unit price ($200 or $4000)
+  const calculatedSales = numCups * currentPricePerUnit;
+  const isSalesMatching = numCups > 0 && numSales === calculatedSales;
+
+  const handlePresentationTypeChange = (newType: ClosingPresentationType) => {
+    setPresentationType(newType);
+    const newConfig = getPresentationConfig(newType);
+    if (autoCalc && typeof totalCups === 'number' && totalCups > 0) {
+      setTotalSales(totalCups * newConfig.unitPrice);
+    }
+  };
 
   const handleCupsChange = (val: number | '') => {
     setTotalCups(val);
-    if (autoCalcBy200) {
+    if (autoCalc) {
       if (typeof val === 'number' && val > 0) {
-        setTotalSales(val * PRICE_PER_CUP);
+        setTotalSales(val * currentPricePerUnit);
       } else if (val === '') {
         setTotalSales('');
       }
     }
   };
 
-  const handleApplyCalculationBy200 = () => {
+  const handleApplyCalculation = () => {
     if (typeof totalCups === 'number' && totalCups > 0) {
-      setTotalSales(totalCups * PRICE_PER_CUP);
+      setTotalSales(totalCups * currentPricePerUnit);
     }
   };
 
   const handleSyncFromFlavors = () => {
     if (totalFlavorsCups > 0) {
       setTotalCups(totalFlavorsCups);
-      if (autoCalcBy200) {
-        setTotalSales(totalFlavorsCups * PRICE_PER_CUP);
+      if (autoCalc) {
+        setTotalSales(totalFlavorsCups * currentPricePerUnit);
       }
     }
   };
@@ -263,7 +289,7 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
     setFormError(null);
 
     if (numCups <= 0) {
-      setFormError('Debes ingresar la cantidad total de vasos vendidos (mayor a 0).');
+      setFormError(`Debes ingresar la cantidad total de ${presentationConfig.unitPlural} vendidas (mayor a 0).`);
       return;
     }
     if (numSales <= 0) {
@@ -283,6 +309,8 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
 
     const formData: DailyClosingFormData = {
       closing_date: closingDate,
+      presentation_type: presentationType,
+      unit_price: currentPricePerUnit,
       responsable_name: profile?.full_name || 'Responsable',
       notes: notes.trim(),
       total_cups: numCups,
@@ -395,7 +423,7 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
         </div>
       </div>
 
-      {/* 2. VENTAS DEL DÍA */}
+      {/* 2. VENTAS DEL DÍA & PRESENTACIÓN */}
       <div className="bg-white dark:bg-stone-900 rounded-2xl border border-stone-200/80 dark:border-stone-800 p-5 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-stone-100 dark:border-stone-800">
           <div className="flex items-center gap-2">
@@ -405,7 +433,7 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
                 2. Ventas del Día
               </h3>
               <p className="text-xs text-stone-500 dark:text-stone-400">
-                Total de vasos despachados y monto recaudado ($200 por vaso)
+                Selecciona la presentación y registra las unidades despachadas
               </p>
             </div>
           </div>
@@ -414,21 +442,92 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
             <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-stone-700 dark:text-stone-300 bg-stone-50 dark:bg-stone-800 px-3 py-1 rounded-full border border-stone-200 dark:border-stone-700">
               <input
                 type="checkbox"
-                checked={autoCalcBy200}
+                checked={autoCalc}
                 onChange={(e) => {
                   const checked = e.target.checked;
-                  setAutoCalcBy200(checked);
+                  setAutoCalc(checked);
                   if (checked && numCups > 0) {
-                    setTotalSales(numCups * PRICE_PER_CUP);
+                    setTotalSales(numCups * currentPricePerUnit);
                   }
                 }}
                 className="w-3.5 h-3.5 rounded text-amber-600 focus:ring-amber-500 focus:ring-offset-0"
               />
               <span className="flex items-center gap-1">
                 <Calculator className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                Auto-calcular (Vasos × $200)
+                Auto-calcular ({presentationConfig.unitPlural} × ${formatNumber(currentPricePerUnit)})
               </span>
             </label>
+          </div>
+        </div>
+
+        {/* SELECTOR DE TIPO DE PRESENTACIÓN: VASOS ($200) vs TINAS DE 4.5L ($4000) */}
+        <div className="p-3.5 rounded-2xl bg-stone-50/80 dark:bg-stone-800/40 border border-stone-200/80 dark:border-stone-700/70 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-stone-700 dark:text-stone-300 uppercase tracking-wider flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              Tipo de Cierre / Presentación
+            </span>
+            <span className="text-[11px] text-stone-500">
+              Precio unitario: <strong>{formatCurrency(currentPricePerUnit)}</strong>
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Opción 1: Vasos Individuales ($200) */}
+            <button
+              type="button"
+              id="btn-pres-cups"
+              onClick={() => handlePresentationTypeChange('cups')}
+              className={cn(
+                'flex items-center justify-between p-3 rounded-xl border text-left transition-all',
+                presentationType === 'cups'
+                  ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-400 dark:border-amber-600 ring-2 ring-amber-500/20 shadow-xs'
+                  : 'bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700 hover:border-stone-300'
+              )}
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="text-xl">🍦</span>
+                <div>
+                  <span className="text-xs font-bold text-stone-900 dark:text-white block">
+                    Vasos Individuales
+                  </span>
+                  <span className="text-[11px] text-stone-500 dark:text-stone-400">
+                    Formato estándar por vaso
+                  </span>
+                </div>
+              </div>
+              <span className="text-xs font-extrabold text-amber-700 dark:text-amber-300 px-2.5 py-1 rounded-lg bg-amber-100/70 dark:bg-amber-900/60">
+                $200 c/u
+              </span>
+            </button>
+
+            {/* Opción 2: Tinas de 4.5 Litros ($4,000) */}
+            <button
+              type="button"
+              id="btn-pres-tubs"
+              onClick={() => handlePresentationTypeChange('tubs_4_5l')}
+              className={cn(
+                'flex items-center justify-between p-3 rounded-xl border text-left transition-all',
+                presentationType === 'tubs_4_5l'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-400 dark:border-emerald-600 ring-2 ring-emerald-500/20 shadow-xs'
+                  : 'bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700 hover:border-stone-300'
+              )}
+            >
+              <div className="flex items-center gap-2.5">
+                <span className="text-xl">🪣</span>
+                <div>
+                  <span className="text-xs font-bold text-stone-900 dark:text-white block">
+                    Tinas de 4.5 Litros
+                  </span>
+                  <span className="text-[11px] text-stone-500 dark:text-stone-400">
+                    Cierre mayorista por tina (4.5L)
+                  </span>
+                </div>
+              </div>
+              <span className="text-xs font-extrabold text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-lg bg-emerald-100/70 dark:bg-emerald-900/60">
+                $4,000 c/u
+              </span>
+            </button>
           </div>
         </div>
 
@@ -436,10 +535,10 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300">
-                Cantidad Total de Vasos Vendidos *
+                Cantidad Total de {presentationConfig.label} Vendidas *
               </label>
-              <span className="text-[11px] text-stone-400">
-                $200 c/u
+              <span className="text-[11px] text-stone-400 font-semibold">
+                ${formatNumber(currentPricePerUnit)} c/u
               </span>
             </div>
             <div className="relative">
@@ -447,13 +546,13 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
                 type="number"
                 min="1"
                 required
-                placeholder="Ej: 120"
+                placeholder={presentationType === 'tubs_4_5l' ? 'Ej: 5 tinas' : 'Ej: 120 vasos'}
                 value={totalCups}
                 onChange={(e) => handleCupsChange(e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0))}
-                className="w-full pl-3.5 pr-12 py-2.5 text-sm font-bold rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                className="w-full pl-3.5 pr-20 py-2.5 text-sm font-bold rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
               />
               <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-stone-400">
-                vasos
+                {presentationConfig.unitPlural}
               </span>
             </div>
           </div>
@@ -466,12 +565,12 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
               {numCups > 0 && (
                 <button
                   type="button"
-                  onClick={handleApplyCalculationBy200}
+                  onClick={handleApplyCalculation}
                   className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 hover:underline inline-flex items-center gap-1"
-                  title="Recalcular como Vasos x $200"
+                  title={`Recalcular como ${presentationConfig.unitPlural} × $${formatNumber(currentPricePerUnit)}`}
                 >
                   <Zap className="w-3 h-3 text-amber-500" />
-                  Calcular: {numCups} × $200
+                  Calcular: {numCups} × ${formatNumber(currentPricePerUnit)}
                 </button>
               )}
             </div>
@@ -500,24 +599,24 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
               <Calculator className="w-3.5 h-3.5" />
             </span>
             <span>
-              Cálculo: <strong>{numCups || 0} vasos</strong> × <strong>$200</strong> = <strong className="text-emerald-700 dark:text-emerald-400 font-display">{formatCurrency(calculatedSalesBy200)}</strong>
+              Cálculo: <strong>{formatUnitCount(numCups, presentationType)}</strong> × <strong>${formatNumber(currentPricePerUnit)}</strong> = <strong className="text-emerald-700 dark:text-emerald-400 font-display">{formatCurrency(calculatedSales)}</strong>
             </span>
           </div>
 
-          {!isSalesMatching200 && numCups > 0 && (
+          {!isSalesMatching && numCups > 0 && (
             <button
               type="button"
-              onClick={handleApplyCalculationBy200}
+              onClick={handleApplyCalculation}
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold shadow-xs transition-colors"
             >
               <Zap className="w-3 h-3" />
-              Aplicar {formatCurrency(calculatedSalesBy200)}
+              Aplicar {formatCurrency(calculatedSales)}
             </button>
           )}
 
-          {isSalesMatching200 && numCups > 0 && (
+          {isSalesMatching && numCups > 0 && (
             <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-              <CheckCircle className="w-3.5 h-3.5" /> Total Cuadrado con $200/vaso
+              <CheckCircle className="w-3.5 h-3.5" /> Total Cuadrado con ${formatNumber(currentPricePerUnit)}/{presentationConfig.unitSingular}
             </span>
           )}
         </div>
@@ -530,10 +629,10 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
             <Coffee className="w-5 h-5 text-amber-600 dark:text-amber-400" />
             <div>
               <h3 className="text-sm font-bold text-stone-900 dark:text-white uppercase tracking-wider">
-                3. Ventas por Sabor
+                3. Ventas por Sabor ({presentationConfig.name})
               </h3>
               <p className="text-xs text-stone-500 dark:text-stone-400">
-                Desglose de vasos vendidos por cada sabor disponible
+                Desglose de {presentationConfig.unitPlural} vendidas por cada sabor disponible
               </p>
             </div>
           </div>
@@ -556,7 +655,7 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
                   : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-900'
               )}
             >
-              Asignados: {totalFlavorsCups} / {numCups || 0} vasos
+              Asignadas: {totalFlavorsCups} / {numCups || 0} {presentationConfig.unitPlural}
             </span>
           </div>
         </div>
@@ -618,7 +717,7 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
 
               <div className="sm:col-span-3">
                 <label className="block text-[11px] font-semibold text-stone-700 dark:text-stone-300 mb-1">
-                  Vasos Vendidos (Opcional)
+                  {presentationConfig.label} Vendidas (Opcional)
                 </label>
                 <input
                   type="number"
@@ -680,14 +779,14 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
         {totalFlavorsCups > 0 && totalFlavorsCups !== numCups && (
           <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 flex items-center justify-between gap-2 text-xs">
             <span className="text-stone-700 dark:text-stone-300">
-              Suma de sabores: <strong>{totalFlavorsCups} vasos</strong> ({formatCurrency(totalFlavorsCups * PRICE_PER_CUP)})
+              Suma de sabores: <strong>{formatUnitCount(totalFlavorsCups, presentationType)}</strong> ({formatCurrency(totalFlavorsCups * currentPricePerUnit)})
             </span>
             <button
               type="button"
               onClick={handleSyncFromFlavors}
               className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-[11px] shrink-0"
             >
-              Sincronizar con Ventas ({totalFlavorsCups} vasos)
+              Sincronizar con Ventas ({formatUnitCount(totalFlavorsCups, presentationType)})
             </button>
           </div>
         )}
@@ -697,14 +796,14 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
           <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2.5">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold">Advertencia de cuadre de vasos: </span>
+              <span className="font-bold">Advertencia de cuadre de unidades ({presentationConfig.unitPlural}): </span>
               {cupsDifference > 0 ? (
                 <span>
-                  Las cantidades por sabor suman <strong>{totalFlavorsCups}</strong> vasos, pero el total declarado es <strong>{numCups}</strong> (faltan {cupsDifference} vasos por asignar).
+                  Las cantidades por sabor suman <strong>{totalFlavorsCups}</strong> {presentationConfig.unitPlural}, pero el total declarado es <strong>{numCups}</strong> (faltan {cupsDifference} {presentationConfig.unitPlural} por asignar).
                 </span>
               ) : (
                 <span>
-                  Las cantidades por sabor suman <strong>{totalFlavorsCups}</strong> vasos, lo cual supera el total de ventas ({numCups} vasos).
+                  Las cantidades por sabor suman <strong>{totalFlavorsCups}</strong> {presentationConfig.unitPlural}, lo cual supera el total de ventas ({numCups} {presentationConfig.unitPlural}).
                 </span>
               )}
             </div>
@@ -718,6 +817,8 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
               index={index}
               flavorId={row.flavor_id}
               quantity={row.quantity}
+              unitPlaceholder={presentationConfig.label}
+              unitLabel={presentationConfig.unitPlural}
               availableFlavors={availableFlavors}
               onFlavorChange={handleFlavorChange}
               onQuantityChange={handleQuantityChange}
@@ -897,7 +998,7 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
           className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white text-xs font-bold shadow-md shadow-amber-600/30 transition-all transform active:scale-98 disabled:opacity-50 flex items-center gap-2"
         >
           <CheckCircle className="w-4 h-4" />
-          {initialData ? 'Guardar Cambios del Cierre' : 'Registrar Cierre Diario'}
+          {initialData ? 'Guardar Cambios del Cierre' : `Registrar Cierre Diario (${presentationConfig.shortName})`}
         </button>
       </div>
 
@@ -916,8 +1017,15 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
               <span className="font-bold text-stone-900 dark:text-white">{closingDate}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-stone-200 dark:border-stone-700">
-              <span className="text-stone-500 font-medium">Vasos Vendidos:</span>
-              <span className="font-bold text-stone-900 dark:text-white">{formatNumber(numCups)} vasos</span>
+              <span className="text-stone-500 font-medium">Presentación:</span>
+              <span className="font-bold text-stone-900 dark:text-white flex items-center gap-1.5">
+                <span>{presentationConfig.icon}</span>
+                <span>{presentationConfig.name} (${formatNumber(currentPricePerUnit)} c/u)</span>
+              </span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-stone-200 dark:border-stone-700">
+              <span className="text-stone-500 font-medium">Cantidad Vendida:</span>
+              <span className="font-bold text-stone-900 dark:text-white">{formatUnitCount(numCups, presentationType)}</span>
             </div>
             <div className="flex justify-between py-1 border-b border-stone-200 dark:border-stone-700">
               <span className="text-stone-500 font-medium">Ventas Totales:</span>
@@ -959,3 +1067,4 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
     </form>
   );
 };
+

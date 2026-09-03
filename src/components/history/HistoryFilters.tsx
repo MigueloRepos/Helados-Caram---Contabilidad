@@ -65,7 +65,22 @@ export const HistoryFilters: React.FC<HistoryFiltersProps> = ({
       </div>
 
       {/* Date filters and quick selectors */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-2 border-t border-stone-100 dark:border-stone-800">
+      <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5 pt-2 border-t border-stone-100 dark:border-stone-800">
+        <div>
+          <label className="block text-[10px] font-semibold text-stone-500 dark:text-stone-400 uppercase mb-1">
+            Presentación
+          </label>
+          <select
+            value={filters.presentationType || ''}
+            onChange={(e) => onFilterChange({ ...filters, presentationType: e.target.value as any || undefined })}
+            className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-800 dark:text-stone-200 font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+          >
+            <option value="">Todas</option>
+            <option value="cups">🍦 Vasos ($200)</option>
+            <option value="tubs_4_5l">🪣 Tinas 4.5L ($4,000)</option>
+          </select>
+        </div>
+
         <div>
           <label className="block text-[10px] font-semibold text-stone-500 dark:text-stone-400 uppercase mb-1">
             Desde

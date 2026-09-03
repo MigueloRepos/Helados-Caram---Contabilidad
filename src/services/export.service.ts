@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { DailyClosing } from '../types';
 import { formatCurrency, formatNumber, formatDateFull } from '../lib/utils';
+import { getClosingPresentation, getPresentationConfig, formatUnitCount } from '../lib/presentation';
 
 export const exportService = {
   /**
@@ -13,8 +14,10 @@ export const exportService = {
 
     const headers = [
       'Fecha',
+      'Presentación',
+      'Precio Unitario ($)',
       'Responsable',
-      'Vasos Vendidos (u.)',
+      'Cantidad Vendida (u.)',
       'Total Ventas ($)',
       'Salario Trabajadores ($)',
       'Salario Mensajero ($)',
@@ -29,12 +32,17 @@ export const exportService = {
     ];
 
     const rows = closings.map((c) => {
+      const presType = getClosingPresentation(c);
+      const presConfig = getPresentationConfig(presType);
+
       const flavorsSummary = (c.flavors || [])
-        .map((f) => `${f.flavor?.name || f.flavor_name || 'Sabor'}: ${f.quantity}u`)
+        .map((f) => `${f.flavor?.name || f.flavor_name || 'Sabor'}: ${f.quantity}${presConfig.unitPlural}`)
         .join('; ');
 
       return [
         c.closing_date,
+        `"${presConfig.name.replace(/"/g, '""')}"`,
+        presConfig.unitPrice,
         `"${(c.profile?.full_name || 'Usuario').replace(/"/g, '""')}"`,
         c.total_cups,
         Number(c.total_sales || 0).toFixed(2),
@@ -76,14 +84,19 @@ export const exportService = {
 
     // Sheet 1: Cierres Contables
     const closingsData = closings.map((c) => {
+      const presType = getClosingPresentation(c);
+      const presConfig = getPresentationConfig(presType);
+
       const flavorsSummary = (c.flavors || [])
-        .map((f) => `${f.flavor?.name || f.flavor_name || 'Sabor'}: ${f.quantity}u`)
+        .map((f) => `${f.flavor?.name || f.flavor_name || 'Sabor'}: ${f.quantity} ${presConfig.unitPlural}`)
         .join(', ');
 
       return {
         'Fecha': c.closing_date,
+        'Presentación': presConfig.name,
+        'Precio Unitario ($)': presConfig.unitPrice,
         'Responsable': c.profile?.full_name || 'Usuario',
-        'Vasos Vendidos (u.)': c.total_cups,
+        'Cantidad Vendida': c.total_cups,
         'Total Ventas ($)': Number(c.total_sales || 0),
         'Salario Trabajadores ($)': Number(c.workers_salary || 0),
         'Salario Mensajero ($)': Number(c.delivery_salary || 0),
@@ -103,12 +116,17 @@ export const exportService = {
     // Sheet 2: Desglose Detallado de Sabores
     const flavorsDetailData: any[] = [];
     closings.forEach((c) => {
+      const presType = getClosingPresentation(c);
+      const presConfig = getPresentationConfig(presType);
+
       (c.flavors || []).forEach((f) => {
         flavorsDetailData.push({
           'Fecha Cierre': c.closing_date,
+          'Presentación': presConfig.name,
           'Responsable': c.profile?.full_name || 'Usuario',
           'Sabor': f.flavor?.name || f.flavor_name || 'Sabor',
-          'Vasos Vendidos': f.quantity,
+          'Cantidad Vendida': f.quantity,
+          'Unidad': presConfig.unitPlural,
           'Porcentaje del Día': c.total_cups > 0 ? `${((f.quantity / c.total_cups) * 100).toFixed(1)}%` : '0%',
         });
       });
@@ -131,8 +149,8 @@ export const exportService = {
     const totalCups = closings.reduce((sum, c) => sum + Number(c.total_cups || 0), 0);
 
     const summaryData = [
-      { 'Indicador / Métrica': 'Total de Días Registrados', 'Valor': closings.length },
-      { 'Indicador / Métrica': 'Total Vasos Vendidos (u.)', 'Valor': totalCups },
+      { 'Indicador / Métrica': 'Total de Cierres Registrados', 'Valor': closings.length },
+      { 'Indicador / Métrica': 'Total Unidades Vendidas', 'Valor': totalCups },
       { 'Indicador / Métrica': 'Ingreso Total por Ventas ($)', 'Valor': totalSales },
       { 'Indicador / Métrica': 'Total Salarios Trabajadores ($)', 'Valor': totalWorkers },
       { 'Indicador / Métrica': 'Total Salario Mensajero ($)', 'Valor': totalDelivery },
@@ -164,6 +182,9 @@ export const exportService = {
       format: 'a4',
     });
 
+    const presType = getClosingPresentation(closing);
+    const presConfig = getPresentationConfig(presType);
+
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
 
@@ -180,7 +201,7 @@ export const exportService = {
     // Subtitle
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.text('SISTEMA CONTABLE Y REPORTE DE AUDITORÍA DIARIA', 14, 20);
+    doc.text(`SISTEMA CONTABLE • ${presConfig.name.toUpperCase()} ($${formatNumber(presConfig.unitPrice)} C/U)`, 14, 20);
 
     // Voucher / Reference Number on right
     doc.setFont('helvetica', 'bold');
@@ -211,15 +232,15 @@ export const exportService = {
     doc.text(closing.profile?.full_name || 'Personal Autorizado', 56, currentY + 15);
 
     doc.setFont('helvetica', 'bold');
-    doc.text('TOTAL VASOS:', pageWidth - 80, currentY + 7);
+    doc.text(`TOTAL ${presConfig.unitPlural.toUpperCase()}:`, pageWidth - 80, currentY + 7);
     doc.setFont('helvetica', 'normal');
-    doc.text(`${formatNumber(closing.total_cups)} vasos`, pageWidth - 45, currentY + 7);
+    doc.text(`${formatNumber(closing.total_cups)} ${presConfig.unitPlural}`, pageWidth - 45, currentY + 7);
 
     doc.setFont('helvetica', 'bold');
-    doc.text('ESTADO CUADRE:', pageWidth - 80, currentY + 15);
-    doc.setTextColor(16, 185, 129);
+    doc.text('PRESENTACIÓN:', pageWidth - 80, currentY + 15);
+    doc.setTextColor(217, 119, 6);
     doc.setFont('helvetica', 'bold');
-    doc.text('CONCILIADO', pageWidth - 45, currentY + 15);
+    doc.text(presConfig.name, pageWidth - 45, currentY + 15);
 
     currentY += 28;
 
@@ -231,7 +252,7 @@ export const exportService = {
     currentY += 3;
 
     const financialRows = [
-      ['Total Ventas Generadas (+)', `${formatNumber(closing.total_cups)} vasos vendidos`, formatCurrency(closing.total_sales)],
+      ['Total Ventas Generadas (+)', `${formatNumber(closing.total_cups)} ${presConfig.unitPlural} a $${formatNumber(presConfig.unitPrice)} c/u`, formatCurrency(closing.total_sales)],
       ['Total Gastos Operativos (-)', 'Salarios, mensajería y compras', formatCurrency(closing.total_expenses)],
       ['Balance Neto del Día (=)', 'Total Ventas menos Gastos', formatCurrency(closing.balance)],
       ['Monto Entregado a Frank (-)', 'Retiro directo en efectivo', formatCurrency(closing.delivered_to_frank)],
@@ -268,16 +289,16 @@ export const exportService = {
     doc.setTextColor(30, 41, 59);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
-    doc.text('2. DESGLOSE DE VENTAS POR SABOR', 14, currentY);
+    doc.text(`2. DESGLOSE DE VENTAS POR SABOR (${presConfig.name.toUpperCase()})`, 14, currentY);
     currentY += 3;
 
     const flavorsRows = (closing.flavors && closing.flavors.length > 0)
       ? closing.flavors.map((f) => [
           f.flavor?.name || f.flavor_name || 'Sabor',
-          `${f.quantity} vasos`,
+          `${f.quantity} ${presConfig.unitPlural}`,
           closing.total_cups > 0 ? `${((f.quantity / closing.total_cups) * 100).toFixed(1)}%` : '0%',
         ])
-      : [['Sin detalle específico de sabores', `${closing.total_cups} vasos`, '100%']];
+      : [['Sin detalle específico de sabores', `${closing.total_cups} ${presConfig.unitPlural}`, '100%']];
 
     autoTable(doc, {
       startY: currentY,
@@ -392,3 +413,4 @@ export const exportService = {
     doc.save(`Helados_Caram_Cierre_${closing.closing_date}.pdf`);
   },
 };
+
