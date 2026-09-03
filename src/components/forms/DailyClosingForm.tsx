@@ -20,6 +20,11 @@ import {
   TrendingDown,
   Wallet,
   Sparkles,
+  Calculator,
+  Zap,
+  IceCream,
+  X,
+  Check,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -29,13 +34,33 @@ interface DailyClosingFormProps {
   onCancel?: () => void;
 }
 
+const PRICE_PER_CUP = 200; // $200 por vaso vendido
+
+const POPULAR_FLAVOR_SUGGESTIONS = [
+  'Mantecado',
+  'Chocolate',
+  'Fresa',
+  'Vainilla',
+  'Coco',
+  'Maracuyá',
+  'Ron con Pasas',
+  'Galleta Oreo',
+  'Guanábana',
+  'Arequipe / Caramelo',
+];
+
 export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
   initialData,
   onSuccess,
   onCancel,
 }) => {
   const { profile } = useAuth();
-  const { flavors: availableFlavors, isLoading: isLoadingFlavors } = useFlavors(false);
+  const {
+    flavors: availableFlavors,
+    isLoading: isLoadingFlavors,
+    createFlavor,
+    isCreating: isCreatingFlavor,
+  } = useFlavors(false);
   const { createClosing, updateClosing, isCreating, isUpdating, closings } = useClosings();
 
   // Form State
@@ -47,6 +72,16 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
   const [deliverySalary, setDeliverySalary] = useState<number | ''>(initialData ? initialData.delivery_salary : 0);
   const [otherExpenses, setOtherExpenses] = useState<number | ''>(initialData ? initialData.other_expenses : 0);
   const [deliveredToFrank, setDeliveredToFrank] = useState<number | ''>(initialData ? initialData.delivered_to_frank : 0);
+
+  // Auto-calculation option state (default enabled for instant calculation by $200)
+  const [autoCalcBy200, setAutoCalcBy200] = useState<boolean>(true);
+
+  // Manual Flavor Creator State
+  const [isManualFlavorOpen, setIsManualFlavorOpen] = useState(false);
+  const [manualFlavorName, setManualFlavorName] = useState('');
+  const [manualFlavorQuantity, setManualFlavorQuantity] = useState<number | ''>('');
+  const [isSubmittingManualFlavor, setIsSubmittingManualFlavor] = useState(false);
+  const [manualFlavorError, setManualFlavorError] = useState<string | null>(null);
 
   // Flavors State
   const [selectedFlavors, setSelectedFlavors] = useState<Array<{ flavor_id: string; quantity: number }>>(() => {
@@ -93,11 +128,104 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
   const cupsDifference = numCups - totalFlavorsCups;
   const hasCupsDiscrepancy = numCups > 0 && cupsDifference !== 0;
 
+  // Expected calculated sales based on 200 per cup
+  const calculatedSalesBy200 = numCups * PRICE_PER_CUP;
+  const isSalesMatching200 = numCups > 0 && numSales === calculatedSalesBy200;
+
+  const handleCupsChange = (val: number | '') => {
+    setTotalCups(val);
+    if (autoCalcBy200) {
+      if (typeof val === 'number' && val > 0) {
+        setTotalSales(val * PRICE_PER_CUP);
+      } else if (val === '') {
+        setTotalSales('');
+      }
+    }
+  };
+
+  const handleApplyCalculationBy200 = () => {
+    if (typeof totalCups === 'number' && totalCups > 0) {
+      setTotalSales(totalCups * PRICE_PER_CUP);
+    }
+  };
+
+  const handleSyncFromFlavors = () => {
+    if (totalFlavorsCups > 0) {
+      setTotalCups(totalFlavorsCups);
+      if (autoCalcBy200) {
+        setTotalSales(totalFlavorsCups * PRICE_PER_CUP);
+      }
+    }
+  };
+
   // Check if date is already registered
   const existingClosingForDate = closings.find(c => c.closing_date === closingDate && c.id !== initialData?.id);
 
   const handleAddFlavorRow = () => {
     setSelectedFlavors(prev => [...prev, { flavor_id: '', quantity: 0 }]);
+  };
+
+  const handleQuickCreateFlavor = async (name: string, targetRowIndex?: number, initialQty?: number) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+
+    // Check if it already exists in availableFlavors (case insensitive)
+    const existing = availableFlavors.find(f => f.name.toLowerCase() === trimmed.toLowerCase());
+    let flavorId = existing?.id;
+
+    if (!flavorId) {
+      const res = await createFlavor(trimmed);
+      if (res?.data) {
+        flavorId = res.data.id;
+      } else if (res?.error) {
+        throw res.error;
+      }
+    }
+
+    if (flavorId) {
+      if (targetRowIndex !== undefined && targetRowIndex < selectedFlavors.length) {
+        setSelectedFlavors(prev => {
+          const updated = [...prev];
+          updated[targetRowIndex].flavor_id = flavorId!;
+          if (typeof initialQty === 'number' && initialQty > 0) {
+            updated[targetRowIndex].quantity = initialQty;
+          }
+          return updated;
+        });
+      } else {
+        setSelectedFlavors(prev => {
+          const emptyIdx = prev.findIndex(f => !f.flavor_id);
+          if (emptyIdx !== -1) {
+            const updated = [...prev];
+            updated[emptyIdx] = { flavor_id: flavorId!, quantity: initialQty || 0 };
+            return updated;
+          }
+          return [...prev, { flavor_id: flavorId!, quantity: initialQty || 0 }];
+        });
+      }
+    }
+  };
+
+  const handleManualFlavorSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setManualFlavorError(null);
+    if (!manualFlavorName.trim()) {
+      setManualFlavorError('Por favor escribe el nombre del sabor.');
+      return;
+    }
+
+    try {
+      setIsSubmittingManualFlavor(true);
+      const qty = typeof manualFlavorQuantity === 'number' ? manualFlavorQuantity : 0;
+      await handleQuickCreateFlavor(manualFlavorName.trim(), undefined, qty);
+      setManualFlavorName('');
+      setManualFlavorQuantity('');
+      setIsManualFlavorOpen(false);
+    } catch (err: any) {
+      setManualFlavorError(err?.message || 'Error al agregar el sabor');
+    } finally {
+      setIsSubmittingManualFlavor(false);
+    }
   };
 
   const handleFlavorChange = (index: number, flavorId: string) => {
@@ -259,23 +387,51 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
 
       {/* 2. VENTAS DEL DÍA */}
       <div className="bg-white dark:bg-stone-900 rounded-2xl border border-stone-200/80 dark:border-stone-800 p-5 shadow-xs space-y-4">
-        <div className="flex items-center gap-2 pb-3 border-b border-stone-100 dark:border-stone-800">
-          <DollarSign className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-          <div>
-            <h3 className="text-sm font-bold text-stone-900 dark:text-white uppercase tracking-wider">
-              2. Ventas del Día
-            </h3>
-            <p className="text-xs text-stone-500 dark:text-stone-400">
-              Total de vasos despachados y monto recaudado
-            </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-stone-100 dark:border-stone-800">
+          <div className="flex items-center gap-2">
+            <DollarSign className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+            <div>
+              <h3 className="text-sm font-bold text-stone-900 dark:text-white uppercase tracking-wider">
+                2. Ventas del Día
+              </h3>
+              <p className="text-xs text-stone-500 dark:text-stone-400">
+                Total de vasos despachados y monto recaudado ($200 por vaso)
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-stone-700 dark:text-stone-300 bg-stone-50 dark:bg-stone-800 px-3 py-1 rounded-full border border-stone-200 dark:border-stone-700">
+              <input
+                type="checkbox"
+                checked={autoCalcBy200}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setAutoCalcBy200(checked);
+                  if (checked && numCups > 0) {
+                    setTotalSales(numCups * PRICE_PER_CUP);
+                  }
+                }}
+                className="w-3.5 h-3.5 rounded text-amber-600 focus:ring-amber-500 focus:ring-offset-0"
+              />
+              <span className="flex items-center gap-1">
+                <Calculator className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                Auto-calcular (Vasos × $200)
+              </span>
+            </label>
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1.5">
-              Cantidad Total de Vasos Vendidos *
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300">
+                Cantidad Total de Vasos Vendidos *
+              </label>
+              <span className="text-[11px] text-stone-400">
+                $200 c/u
+              </span>
+            </div>
             <div className="relative">
               <input
                 type="number"
@@ -283,7 +439,7 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
                 required
                 placeholder="Ej: 120"
                 value={totalCups}
-                onChange={(e) => setTotalCups(e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0))}
+                onChange={(e) => handleCupsChange(e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0))}
                 className="w-full pl-3.5 pr-12 py-2.5 text-sm font-bold rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
               />
               <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-stone-400">
@@ -293,9 +449,22 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300 mb-1.5">
-              Precio Total de las Ventas (USD) *
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold text-stone-700 dark:text-stone-300">
+                Precio Total de las Ventas (USD) *
+              </label>
+              {numCups > 0 && (
+                <button
+                  type="button"
+                  onClick={handleApplyCalculationBy200}
+                  className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 hover:underline inline-flex items-center gap-1"
+                  title="Recalcular como Vasos x $200"
+                >
+                  <Zap className="w-3 h-3 text-amber-500" />
+                  Calcular: {numCups} × $200
+                </button>
+              )}
+            </div>
             <div className="relative">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-stone-400">
                 $
@@ -312,6 +481,35 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
               />
             </div>
           </div>
+        </div>
+
+        {/* Calculation Helper Banner */}
+        <div className="p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/50 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 text-stone-700 dark:text-stone-300">
+            <span className="p-1 rounded-md bg-amber-200/60 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300">
+              <Calculator className="w-3.5 h-3.5" />
+            </span>
+            <span>
+              Cálculo: <strong>{numCups || 0} vasos</strong> × <strong>$200</strong> = <strong className="text-emerald-700 dark:text-emerald-400 font-display">{formatCurrency(calculatedSalesBy200)}</strong>
+            </span>
+          </div>
+
+          {!isSalesMatching200 && numCups > 0 && (
+            <button
+              type="button"
+              onClick={handleApplyCalculationBy200}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold shadow-xs transition-colors"
+            >
+              <Zap className="w-3 h-3" />
+              Aplicar {formatCurrency(calculatedSalesBy200)}
+            </button>
+          )}
+
+          {isSalesMatching200 && numCups > 0 && (
+            <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+              <CheckCircle className="w-3.5 h-3.5" /> Total Cuadrado con $200/vaso
+            </span>
+          )}
         </div>
       </div>
 
@@ -331,6 +529,15 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsManualFlavorOpen(!isManualFlavorOpen)}
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200/80 dark:border-amber-900/60 hover:bg-amber-100 dark:hover:bg-amber-900/80 transition-colors shadow-2xs"
+            >
+              <IceCream className="w-3.5 h-3.5 text-amber-600" />
+              <span>{isManualFlavorOpen ? 'Ocultar Creador' : '+ Agregar Sabor Manual'}</span>
+            </button>
+
             <span
               className={cn(
                 'text-xs font-bold px-3 py-1 rounded-full border',
@@ -343,6 +550,137 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
             </span>
           </div>
         </div>
+
+        {/* Quick Manual Flavor Creator Panel */}
+        {isManualFlavorOpen && (
+          <div className="p-4 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border-2 border-dashed border-amber-300 dark:border-amber-800/80 space-y-3 transition-all animate-in fade-in duration-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-amber-500 text-white shadow-xs">
+                  <IceCream className="w-4 h-4" />
+                </span>
+                <div>
+                  <h4 className="text-xs font-bold text-stone-900 dark:text-white uppercase tracking-wider">
+                    Crear y Agregar Sabor Manualmente
+                  </h4>
+                  <p className="text-[11px] text-stone-500 dark:text-stone-400">
+                    Escribe el nombre de un sabor para crearlo y asignarlo de inmediato a este cierre
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsManualFlavorOpen(false);
+                  setManualFlavorError(null);
+                }}
+                className="p-1.5 rounded-lg text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 hover:bg-stone-200/50 dark:hover:bg-stone-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {manualFlavorError && (
+              <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300">
+                {manualFlavorError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+              <div className="sm:col-span-7">
+                <label className="block text-[11px] font-semibold text-stone-700 dark:text-stone-300 mb-1">
+                  Nombre del Sabor *
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Chocolate Suizo, Fresa, Coco, Oreo..."
+                  value={manualFlavorName}
+                  onChange={(e) => setManualFlavorName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleManualFlavorSubmit(e);
+                    }
+                  }}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-white font-medium focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="sm:col-span-3">
+                <label className="block text-[11px] font-semibold text-stone-700 dark:text-stone-300 mb-1">
+                  Vasos Vendidos (Opcional)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={manualFlavorQuantity}
+                  onChange={(e) => setManualFlavorQuantity(e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-white font-semibold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="sm:col-span-2 flex items-end">
+                <button
+                  type="button"
+                  onClick={handleManualFlavorSubmit}
+                  disabled={!manualFlavorName.trim() || isSubmittingManualFlavor}
+                  className="w-full py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-1.5 shadow-xs"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  {isSubmittingManualFlavor ? 'Guardando...' : 'Agregar'}
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Suggestions Chips */}
+            <div className="pt-2 border-t border-amber-200/60 dark:border-amber-900/40">
+              <span className="text-[11px] font-medium text-stone-500 dark:text-stone-400 block mb-1.5">
+                Sugerencias rápidas (1-clic para agregar):
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {POPULAR_FLAVOR_SUGGESTIONS.map((flavorName) => {
+                  const alreadySelected = selectedFlavors.some(
+                    sf => availableFlavors.find(af => af.id === sf.flavor_id)?.name.toLowerCase() === flavorName.toLowerCase()
+                  );
+                  return (
+                    <button
+                      key={flavorName}
+                      type="button"
+                      disabled={alreadySelected}
+                      onClick={() => handleQuickCreateFlavor(flavorName, undefined, 0)}
+                      className={cn(
+                        'text-[11px] px-2.5 py-1 rounded-lg border transition-all inline-flex items-center gap-1',
+                        alreadySelected
+                          ? 'bg-stone-100 text-stone-400 border-stone-200 dark:bg-stone-800/40 dark:text-stone-500 dark:border-stone-800 cursor-not-allowed'
+                          : 'bg-white text-stone-700 border-stone-200 hover:border-amber-400 hover:bg-amber-50 dark:bg-stone-800 dark:text-stone-200 dark:border-stone-700 dark:hover:border-amber-600'
+                      )}
+                    >
+                      <Plus className="w-2.5 h-2.5 text-amber-600" />
+                      {flavorName} {alreadySelected ? '✓' : ''}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sync from flavors button if discrepancy */}
+        {totalFlavorsCups > 0 && totalFlavorsCups !== numCups && (
+          <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 flex items-center justify-between gap-2 text-xs">
+            <span className="text-stone-700 dark:text-stone-300">
+              Suma de sabores: <strong>{totalFlavorsCups} vasos</strong> ({formatCurrency(totalFlavorsCups * PRICE_PER_CUP)})
+            </span>
+            <button
+              type="button"
+              onClick={handleSyncFromFlavors}
+              className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-[11px] shrink-0"
+            >
+              Sincronizar con Ventas ({totalFlavorsCups} vasos)
+            </button>
+          </div>
+        )}
 
         {/* Warning if discrepancy */}
         {hasCupsDiscrepancy && (
@@ -375,18 +713,30 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
               onQuantityChange={handleQuantityChange}
               onRemove={handleRemoveFlavorRow}
               isRemovable={selectedFlavors.length > 1}
+              onQuickCreateFlavor={handleQuickCreateFlavor}
             />
           ))}
         </div>
 
-        <button
-          type="button"
-          onClick={handleAddFlavorRow}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-dashed border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-xs font-semibold transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          Agregar otro sabor
-        </button>
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={handleAddFlavorRow}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-dashed border-stone-300 dark:border-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-800/60 text-xs font-semibold transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Agregar otra fila
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsManualFlavorOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-dashed border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-xs font-semibold transition-colors"
+          >
+            <IceCream className="w-3.5 h-3.5 text-amber-600" />
+            Crear nuevo sabor manualmente
+          </button>
+        </div>
       </div>
 
       {/* 4. GASTOS DEL DÍA */}
