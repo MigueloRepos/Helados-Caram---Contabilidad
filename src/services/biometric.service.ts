@@ -113,11 +113,18 @@ export const biometricService = {
     userName: string
   ): Promise<{ ok: boolean; message?: string; error?: string }> {
     try {
+      if (!window.isSecureContext) {
+        return {
+          ok: false,
+          error: 'WebAuthn requiere una conexión segura (HTTPS o localhost).',
+        };
+      }
+
       const available = await this.isBiometricAvailable();
       if (!available) {
         return {
           ok: false,
-          error: 'Tu dispositivo o navegador no soporta autenticación biométrica / huella dactilar.',
+          error: 'Tu dispositivo o navegador no tiene configurado un sensor biométrico (huella dactilar, Touch ID o Face ID). Asegúrate de tener huella registrada en la configuración de seguridad de tu teléfono.',
         };
       }
 
@@ -131,16 +138,16 @@ export const biometricService = {
       const rpName = 'Helados Caram';
       const rpId = window.location.hostname;
 
-      const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptions = {
+      const baseOptions: PublicKeyCredentialCreationOptions = {
         challenge: challenge.buffer,
         rp: {
           name: rpName,
-          id: rpId === 'localhost' || rpId.endsWith('.run.app') || !rpId.includes(':') ? rpId : undefined,
+          id: rpId && rpId !== 'localhost' && !rpId.includes(':') ? rpId : undefined,
         },
         user: {
           id: userId.buffer,
-          name: email,
-          displayName: userName || email,
+          name: email.trim(),
+          displayName: userName || email.trim(),
         },
         pubKeyCredParams: [
           { alg: -7, type: 'public-key' }, // ES256
@@ -148,8 +155,8 @@ export const biometricService = {
         ],
         authenticatorSelection: {
           authenticatorAttachment: 'platform', // Built-in fingerprint / Face sensor
-          userVerification: 'required',
-          residentKey: 'preferred',
+          userVerification: 'preferred',
+          residentKey: 'discouraged',
         },
         timeout: 60000,
         attestation: 'none',
@@ -158,15 +165,30 @@ export const biometricService = {
       let credential: any;
       try {
         credential = await navigator.credentials.create({
-          publicKey: publicKeyCredentialCreationOptions,
+          publicKey: baseOptions,
         });
       } catch (credErr: any) {
-        // Fallback without strict rpId if host mismatch in sandboxes
-        if (credErr?.name === 'SecurityError' || credErr?.message?.includes('rp.id')) {
-          const fallbackOptions = { ...publicKeyCredentialCreationOptions, rp: { name: rpName } };
-          credential = await navigator.credentials.create({
-            publicKey: fallbackOptions,
-          });
+        // Fallback without rp.id if strict domain error occurs in sandboxes/iframes
+        if (
+          credErr?.name === 'SecurityError' ||
+          credErr?.name === 'NotSupportedError' ||
+          credErr?.message?.includes('rp.id') ||
+          credErr?.message?.includes('iframe')
+        ) {
+          try {
+            const fallbackOptions: PublicKeyCredentialCreationOptions = {
+              ...baseOptions,
+              rp: { name: rpName },
+              authenticatorSelection: {
+                userVerification: 'discouraged',
+              },
+            };
+            credential = await navigator.credentials.create({
+              publicKey: fallbackOptions,
+            });
+          } catch (nestedErr: any) {
+            throw nestedErr;
+          }
         } else {
           throw credErr;
         }
@@ -204,6 +226,12 @@ export const biometricService = {
       console.error('Error during biometric enrollment:', err);
       if (err.name === 'NotAllowedError') {
         return { ok: false, error: 'Operación cancelada o permiso denegado por el sensor biométrico.' };
+      }
+      if (err.name === 'SecurityError') {
+        return {
+          ok: false,
+          error: 'Por políticas de seguridad del navegador, abre la aplicación en una pestaña nueva para usar el sensor de huella.',
+        };
       }
       return { ok: false, error: err.message || 'Error al configurar huella dactilar.' };
     }
@@ -254,17 +282,34 @@ export const biometricService = {
         }
       }
 
+      const rpId = window.location.hostname;
       const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions = {
         challenge: challenge.buffer,
         timeout: 60000,
-        userVerification: 'required',
+        rpId: rpId && rpId !== 'localhost' && !rpId.includes(':') ? rpId : undefined,
+        userVerification: 'preferred',
         allowCredentials: allowCredentialsList.length > 0 ? allowCredentialsList : undefined,
       };
 
       // Prompt native Android / iOS / device fingerprint prompt
-      const assertion = await navigator.credentials.get({
-        publicKey: publicKeyCredentialRequestOptions,
-      });
+      let assertion: any;
+      try {
+        assertion = await navigator.credentials.get({
+          publicKey: publicKeyCredentialRequestOptions,
+        });
+      } catch (getErr: any) {
+        // Fallback without rpId if host strict check fails
+        if (getErr?.name === 'SecurityError' || getErr?.message?.includes('rpId')) {
+          assertion = await navigator.credentials.get({
+            publicKey: {
+              ...publicKeyCredentialRequestOptions,
+              rpId: undefined,
+            },
+          });
+        } else {
+          throw getErr;
+        }
+      }
 
       if (!assertion) {
         return { ok: false, error: 'No se completó la lectura de huella dactilar.' };
@@ -295,6 +340,12 @@ export const biometricService = {
       console.error('Biometric authentication failed:', err);
       if (err.name === 'NotAllowedError') {
         return { ok: false, error: 'Escaneo de huella cancelado o no reconocido por el sensor.' };
+      }
+      if (err.name === 'SecurityError') {
+        return {
+          ok: false,
+          error: 'Por políticas de seguridad del navegador, abre la aplicación en una pestaña nueva para usar el sensor de huella.',
+        };
       }
       return { ok: false, error: err.message || 'Error durante la verificación biométrica.' };
     }
