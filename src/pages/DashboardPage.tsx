@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useDashboardStats, useExpensesChart, useFlavorStats } from '../hooks/useStats';
 import { useClosings } from '../hooks/useClosings';
 import { DashboardStatCards } from '../components/dashboard/StatCards';
+import { MissingClosingsBanner } from '../components/dashboard/MissingClosingsBanner';
 import { ExpensesChart } from '../components/charts/ExpensesChart';
 import { FlavorsChart } from '../components/charts/FlavorsChart';
 import { HistoryTable } from '../components/history/HistoryTable';
@@ -11,6 +12,7 @@ import { DailyClosing } from '../types';
 
 interface DashboardPageProps {
   onNavigate: (path: string) => void;
+  onNavigateToClosingDate?: (dateStr: string) => void;
   onViewClosingDetail: (closing: DailyClosing) => void;
   onEditClosing: (closing: DailyClosing) => void;
   onDeleteClosing: (closing: DailyClosing) => void;
@@ -18,6 +20,7 @@ interface DashboardPageProps {
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigate,
+  onNavigateToClosingDate,
   onViewClosingDetail,
   onEditClosing,
   onDeleteClosing,
@@ -30,8 +33,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   const recentClosings = closings.slice(0, 5);
 
+  const handleSelectDate = (dateStr: string) => {
+    if (onNavigateToClosingDate) {
+      onNavigateToClosingDate(dateStr);
+    } else {
+      onNavigate('/cierre-diario');
+    }
+  };
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Top Welcome Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-3xl bg-gradient-to-r from-amber-600 via-amber-700 to-stone-900 text-white shadow-xl">
         <div className="space-y-1">
@@ -64,6 +75,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Missing Daily Closings Alert Banner for Admins / Users */}
+      <MissingClosingsBanner
+        onSelectDate={handleSelectDate}
+        onNavigateToHistory={() => onNavigate('/historial')}
+      />
 
       {/* Main Metric Cards */}
       <DashboardStatCards stats={stats} isLoading={isLoadingStats} />

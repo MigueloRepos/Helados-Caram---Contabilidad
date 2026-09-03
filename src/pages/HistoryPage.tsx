@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useClosings } from '../hooks/useClosings';
+import { useMissingClosings } from '../hooks/useMissingClosings';
 import { useAuth } from '../contexts/AuthContext';
 import { DailyClosing, HistoryFilterParams } from '../types';
 import { HistoryFilters } from '../components/history/HistoryFilters';
@@ -20,15 +21,19 @@ import {
   FileSpreadsheet,
   FileText,
   ChevronDown,
+  AlertTriangle,
+  Calendar,
 } from 'lucide-react';
 
 interface HistoryPageProps {
   onNavigate: (path: string) => void;
+  onNavigateToClosingDate?: (dateStr: string) => void;
   onEditClosing: (closing: DailyClosing) => void;
 }
 
 export const HistoryPage: React.FC<HistoryPageProps> = ({
   onNavigate,
+  onNavigateToClosingDate,
   onEditClosing,
 }) => {
   const { isAdmin } = useAuth();
@@ -37,6 +42,7 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   });
 
   const { closings, isLoading, deleteClosing, isDeleting } = useClosings(filters);
+  const { missingDays, missingCount } = useMissingClosings(14);
 
   const [selectedClosing, setSelectedClosing] = useState<DailyClosing | null>(null);
   const [closingToDelete, setClosingToDelete] = useState<DailyClosing | null>(null);
@@ -53,6 +59,14 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
       if (selectedClosing?.id === closingToDelete.id) {
         setSelectedClosing(null);
       }
+    }
+  };
+
+  const handleSelectMissingDate = (dateStr: string) => {
+    if (onNavigateToClosingDate) {
+      onNavigateToClosingDate(dateStr);
+    } else {
+      onNavigate('/cierre-diario');
     }
   };
 
@@ -214,6 +228,44 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Missing closings notification strip in history */}
+      {missingCount > 0 && (
+        <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 dark:bg-amber-950/40 dark:border-amber-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-400 shrink-0">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="font-bold text-stone-900 dark:text-white">
+                {missingCount} fecha{missingCount > 1 ? 's' : ''} pendiente{missingCount > 1 ? 's' : ''} de cierre
+              </span>
+              <span className="text-stone-500 dark:text-stone-400 ml-1.5 hidden sm:inline">
+                (Últimos 14 días con omisión de registro)
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {missingDays.slice(0, 3).map((day) => (
+              <button
+                key={day.dateStr}
+                onClick={() => handleSelectMissingDate(day.dateStr)}
+                className="px-2.5 py-1 rounded-lg bg-white dark:bg-stone-800 text-stone-800 dark:text-stone-200 border border-stone-200 dark:border-stone-700 hover:border-amber-500 text-[11px] font-semibold flex items-center gap-1 transition-colors"
+                title={`Registrar cierre de ${day.label}`}
+              >
+                <Calendar className="w-3 h-3 text-amber-600" />
+                <span>{day.formattedDate}</span>
+              </button>
+            ))}
+            {missingDays.length > 3 && (
+              <span className="text-[10px] font-medium text-stone-400">
+                +{missingDays.length - 3} más
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Main Table */}
       {isLoading ? (

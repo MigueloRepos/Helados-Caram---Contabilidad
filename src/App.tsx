@@ -58,6 +58,7 @@ const MainAppContent: React.FC = () => {
   const { profile, isAdmin } = useAuth();
   const [currentPath, setCurrentPath] = useState<string>('/dashboard');
   const [editingClosing, setEditingClosing] = useState<DailyClosing | null>(null);
+  const [initialClosingDate, setInitialClosingDate] = useState<string | null>(null);
   const [viewingClosing, setViewingClosing] = useState<DailyClosing | null>(null);
   const [closingToDelete, setClosingToDelete] = useState<DailyClosing | null>(null);
 
@@ -71,18 +72,28 @@ const MainAppContent: React.FC = () => {
   const handleNavigate = (path: string) => {
     if (path !== '/cierre-diario') {
       setEditingClosing(null);
+      setInitialClosingDate(null);
     }
     setCurrentPath(path);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleNavigateToClosingDate = (dateStr: string) => {
+    setEditingClosing(null);
+    setInitialClosingDate(dateStr);
+    setCurrentPath('/cierre-diario');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleEditClosing = (closing: DailyClosing) => {
     setEditingClosing(closing);
+    setInitialClosingDate(null);
     setCurrentPath('/cierre-diario');
   };
 
   const handleClosingSaved = (closing: DailyClosing) => {
     setEditingClosing(null);
+    setInitialClosingDate(null);
     setViewingClosing(closing);
     setCurrentPath('/historial');
   };
@@ -106,6 +117,7 @@ const MainAppContent: React.FC = () => {
     <AppLayout
       currentPath={currentPath}
       onNavigate={handleNavigate}
+      onNavigateToClosingDate={handleNavigateToClosingDate}
       title={meta.title}
       subtitle={meta.subtitle}
     >
@@ -113,6 +125,7 @@ const MainAppContent: React.FC = () => {
         <ProtectedRoute onNavigateToLogin={() => setCurrentPath('/login')}>
           <DashboardPage
             onNavigate={handleNavigate}
+            onNavigateToClosingDate={handleNavigateToClosingDate}
             onViewClosingDetail={(c) => setViewingClosing(c)}
             onEditClosing={handleEditClosing}
             onDeleteClosing={(c) => setClosingToDelete(c)}
@@ -124,6 +137,7 @@ const MainAppContent: React.FC = () => {
         <ProtectedRoute onNavigateToLogin={() => setCurrentPath('/login')}>
           <DailyClosingPage
             editingClosing={editingClosing}
+            initialDate={initialClosingDate}
             onNavigate={handleNavigate}
             onSuccess={handleClosingSaved}
           />
@@ -134,6 +148,7 @@ const MainAppContent: React.FC = () => {
         <ProtectedRoute onNavigateToLogin={() => setCurrentPath('/login')}>
           <HistoryPage
             onNavigate={handleNavigate}
+            onNavigateToClosingDate={handleNavigateToClosingDate}
             onEditClosing={handleEditClosing}
           />
         </ProtectedRoute>

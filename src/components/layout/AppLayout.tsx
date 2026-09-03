@@ -6,6 +6,7 @@ import { MobileThumbNav } from './MobileThumbNav';
 interface AppLayoutProps {
   currentPath: string;
   onNavigate: (path: string) => void;
+  onNavigateToClosingDate?: (dateStr: string) => void;
   title: string;
   subtitle?: string;
   children: React.ReactNode;
@@ -14,6 +15,7 @@ interface AppLayoutProps {
 export const AppLayout: React.FC<AppLayoutProps> = ({
   currentPath,
   onNavigate,
+  onNavigateToClosingDate,
   title,
   subtitle,
   children,
@@ -38,6 +40,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             subtitle={subtitle}
             onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
             onNavigate={onNavigate}
+            onNavigateToClosingDate={onNavigateToClosingDate}
           />
 
           <main className="flex-1 p-4 pb-28 lg:p-8 lg:pb-8 max-w-7xl w-full mx-auto">

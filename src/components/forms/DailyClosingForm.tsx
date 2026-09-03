@@ -30,6 +30,7 @@ import { cn } from '../../lib/utils';
 
 interface DailyClosingFormProps {
   initialData?: DailyClosing | null;
+  initialDate?: string | null;
   onSuccess?: (closing: DailyClosing) => void;
   onCancel?: () => void;
 }
@@ -51,6 +52,7 @@ const POPULAR_FLAVOR_SUGGESTIONS = [
 
 export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
   initialData,
+  initialDate,
   onSuccess,
   onCancel,
 }) => {
@@ -64,7 +66,15 @@ export const DailyClosingForm: React.FC<DailyClosingFormProps> = ({
   const { createClosing, updateClosing, isCreating, isUpdating, closings } = useClosings();
 
   // Form State
-  const [closingDate, setClosingDate] = useState(initialData?.closing_date || getTodayDateString());
+  const [closingDate, setClosingDate] = useState(
+    initialData?.closing_date || initialDate || getTodayDateString()
+  );
+
+  useEffect(() => {
+    if (initialDate && !initialData) {
+      setClosingDate(initialDate);
+    }
+  }, [initialDate, initialData]);
   const [notes, setNotes] = useState(initialData?.notes || '');
   const [totalCups, setTotalCups] = useState<number | ''>(initialData ? initialData.total_cups : '');
   const [totalSales, setTotalSales] = useState<number | ''>(initialData ? initialData.total_sales : '');

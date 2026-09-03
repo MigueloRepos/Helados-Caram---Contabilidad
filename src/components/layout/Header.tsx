@@ -1,13 +1,15 @@
 import React from 'react';
-import { Menu, Plus, Calendar, Bell } from 'lucide-react';
+import { Menu, Plus, Calendar } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDateFull } from '../../lib/utils';
+import { NotificationsDropdown } from '../notifications/NotificationsDropdown';
 
 interface HeaderProps {
   title: string;
   subtitle?: string;
   onOpenMobileMenu: () => void;
   onNavigate: (path: string) => void;
+  onNavigateToClosingDate?: (dateStr: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -15,6 +17,7 @@ export const Header: React.FC<HeaderProps> = ({
   subtitle,
   onOpenMobileMenu,
   onNavigate,
+  onNavigateToClosingDate,
 }) => {
   const { profile, isAdmin } = useAuth();
   const todayStr = new Date().toISOString().split('T')[0];
@@ -45,7 +48,19 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          {/* Notifications Dropdown for Missing Daily Closings */}
+          <NotificationsDropdown
+            onNavigateToClosingDate={(dateStr) => {
+              if (onNavigateToClosingDate) {
+                onNavigateToClosingDate(dateStr);
+              } else {
+                onNavigate('/cierre-diario');
+              }
+            }}
+            onNavigateToHistory={() => onNavigate('/historial')}
+          />
+
           {/* Today Date pill */}
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-900/40 text-xs text-amber-900 dark:text-amber-200">
             <Calendar className="w-3.5 h-3.5 text-amber-600" />

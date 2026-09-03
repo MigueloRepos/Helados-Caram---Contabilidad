@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useMissingClosings } from '../../hooks/useMissingClosings';
 import {
   LayoutDashboard,
   CalendarCheck,
@@ -15,6 +16,7 @@ import {
   User,
   ShieldAlert,
   X,
+  AlertTriangle,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Badge } from '../ui/Badge';
@@ -34,6 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { profile, role, isAdmin, signOut, switchDemoRole } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { missingCount, urgentCount } = useMissingClosings(14);
 
   const navItems = [
     {
@@ -46,7 +49,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Cierre Diario',
       path: '/cierre-diario',
       icon: CalendarCheck,
-      badge: 'Principal',
+      badge: missingCount > 0 ? `${missingCount} pendiente${missingCount > 1 ? 's' : ''}` : 'Principal',
+      isAlert: missingCount > 0,
       roles: ['admin', 'frank'],
     },
     {
@@ -163,6 +167,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         'px-2 py-0.5 text-[10px] rounded-full font-bold',
                         isActive
                           ? 'bg-white/20 text-white'
+                          : item.isAlert
+                          ? urgentCount > 0
+                            ? 'bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300'
+                            : 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300'
                           : 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300'
                       )}
                     >

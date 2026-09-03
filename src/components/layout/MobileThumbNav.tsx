@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useMissingClosings } from '../../hooks/useMissingClosings';
 import {
   LayoutDashboard,
   CalendarCheck,
@@ -18,6 +19,7 @@ import {
   X,
   Sparkles,
   ChevronRight,
+  AlertTriangle,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Badge } from '../ui/Badge';
@@ -33,6 +35,7 @@ export const MobileThumbNav: React.FC<MobileThumbNavProps> = ({
 }) => {
   const { profile, role, isAdmin, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { missingCount, urgentCount } = useMissingClosings(14);
   const [isThumbSheetOpen, setIsThumbSheetOpen] = useState(false);
 
   const handleNav = (path: string) => {
@@ -100,13 +103,13 @@ export const MobileThumbNav: React.FC<MobileThumbNavProps> = ({
             <span className="text-[10px] mt-0.5 tracking-tight">Historial</span>
           </button>
 
-          {/* 3. Hero Thumb Button (Center Action: Cierre Diario) */}
+          {/* 3. Hero Thumb Button (Center Action: Cierre Diario) with Missing Badge */}
           <div className="relative -top-4 flex items-center justify-center px-1">
             <button
               id="mobile-thumb-cierre-btn"
               onClick={() => handleNav('/cierre-diario')}
               className={cn(
-                'flex flex-col items-center justify-center w-14 h-14 rounded-full shadow-lg transition-all duration-200 active:scale-90',
+                'relative flex flex-col items-center justify-center w-14 h-14 rounded-full shadow-lg transition-all duration-200 active:scale-90',
                 isCierre
                   ? 'bg-amber-700 text-white ring-4 ring-amber-300/60 dark:ring-amber-900/80 shadow-amber-700/50'
                   : 'bg-gradient-to-tr from-amber-600 to-amber-500 text-white shadow-amber-600/40 hover:from-amber-700 hover:to-amber-600'
@@ -114,6 +117,16 @@ export const MobileThumbNav: React.FC<MobileThumbNavProps> = ({
               title="Registrar Cierre Diario"
             >
               <Plus className="w-6 h-6 stroke-[2.5]" />
+              {missingCount > 0 && (
+                <span
+                  className={cn(
+                    'absolute -top-1 -right-1 min-w-[20px] h-[20px] px-1 rounded-full text-[10px] font-extrabold flex items-center justify-center text-white ring-2 ring-white dark:ring-stone-900 shadow-md',
+                    urgentCount > 0 ? 'bg-rose-600 animate-pulse' : 'bg-amber-600'
+                  )}
+                >
+                  {missingCount}
+                </span>
+              )}
             </button>
           </div>
 
@@ -144,7 +157,7 @@ export const MobileThumbNav: React.FC<MobileThumbNavProps> = ({
             id="mobile-thumb-more"
             onClick={() => setIsThumbSheetOpen(true)}
             className={cn(
-              'flex flex-col items-center justify-center py-1 px-2.5 rounded-2xl transition-all duration-200 min-w-[58px]',
+              'relative flex flex-col items-center justify-center py-1 px-2.5 rounded-2xl transition-all duration-200 min-w-[58px]',
               isMoreActive || isThumbSheetOpen
                 ? 'text-amber-600 dark:text-amber-400 font-bold scale-105'
                 : 'text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200'
