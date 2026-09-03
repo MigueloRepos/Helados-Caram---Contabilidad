@@ -3,7 +3,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { useDashboardStats, useExpensesChart, useFlavorStats } from '../hooks/useStats';
 import { useClosings } from '../hooks/useClosings';
 import { DashboardStatCards } from '../components/dashboard/StatCards';
-import { SalesChart } from '../components/charts/SalesChart';
 import { ExpensesChart } from '../components/charts/ExpensesChart';
 import { FlavorsChart } from '../components/charts/FlavorsChart';
 import { HistoryTable } from '../components/history/HistoryTable';
@@ -68,9 +67,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       {/* Main Metric Cards */}
       <DashboardStatCards stats={stats} isLoading={isLoadingStats} />
-
-      {/* Sales Chart Section */}
-      <SalesChart />
 
       {/* Grid: Expenses Breakdown & Top Flavors */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
